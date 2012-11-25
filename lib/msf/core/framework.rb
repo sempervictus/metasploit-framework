@@ -77,8 +77,12 @@ class Framework
 
 		# Allow specific module types to be loaded
 		types = opts[:module_types] || MODULE_TYPES
-
-		self.threads   = ThreadManager.new(self)
+		if Rex.const_defined?(:Rbx)
+			require 'msf/core/actor_manager'
+			self.threads = ActorManager.new(self)
+		else
+			self.threads = ThreadManager.new(self)
+		end
 		self.events    = EventDispatcher.new(self)
 		self.modules   = ModuleManager.new(self,types)
 		self.sessions  = SessionManager.new(self)

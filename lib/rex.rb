@@ -46,6 +46,9 @@ require 'rex/time'
 require 'rex/job_container'
 require 'rex/file'
 
+# Rbx libraries
+require 'rex/rbx'
+
 # Thread safety and synchronization
 require 'rex/sync'
 
