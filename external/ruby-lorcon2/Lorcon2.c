@@ -464,7 +464,8 @@ static VALUE Lorcon_inject_packet(VALUE self, VALUE packet) {
 	int ret;
 
 	if (rb_obj_is_kind_of(packet, cPacket) == 0) {
-		rb_raise(rb_eTypeError, "wrong type expected %s", rb_class2name(cPacket));
+		// This should be rb_eTypeError, but crashes RBX
+		rb_raise(rb_eArgError, "wrong type expected %s", rb_class2name(cPacket));
 		return Qnil;
 	}
 		

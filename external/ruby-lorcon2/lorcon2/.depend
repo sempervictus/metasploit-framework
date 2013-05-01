@@ -1,0 +1,24 @@
+
+ifcontrol_linux.o: ifcontrol_linux.c config.h ifcontrol_linux.h lorcon.h \
+ lorcon_packet.h
+iwcontrol.o: iwcontrol.c config.h iwcontrol.h lorcon.h lorcon_packet.h
+madwifing_control.o: madwifing_control.c config.h madwifing_control.h \
+ lorcon.h lorcon_packet.h ifcontrol_linux.h
+nl80211_control.o: nl80211_control.c config.h nl80211.h lorcon.h \
+ lorcon_packet.h nl80211_control.h
+lorcon_packet.o: lorcon_packet.c config.h lorcon.h lorcon_packet.h \
+ lorcon_endian.h lorcon_packasm.h lorcon_forge.h lorcon_int.h lorcon.h \
+ lorcon_packet.h ieee80211.h
+lorcon_packasm.o: lorcon_packasm.c config.h lorcon_packasm.h
+lorcon_forge.o: lorcon_forge.c config.h lorcon.h lorcon_packet.h \
+ lorcon_packasm.h lorcon_endian.h lorcon_forge.h ieee80211.h
+drv_mac80211.o: drv_mac80211.c config.h drv_mac80211.h lorcon.h \
+ lorcon_packet.h ifcontrol_linux.h nl80211_control.h lorcon_int.h \
+ lorcon_packet.h
+drv_tuntap.o: drv_tuntap.c config.h drv_tuntap.h lorcon.h lorcon_packet.h \
+ ifcontrol_linux.h nl80211_control.h lorcon_int.h lorcon_packet.h
+drv_madwifing.o: drv_madwifing.c config.h drv_madwifing.h lorcon.h \
+ lorcon_packet.h ifcontrol_linux.h madwifing_control.h lorcon_int.h \
+ lorcon_packet.h
+lorcon.o: lorcon.c lorcon.h lorcon_packet.h lorcon_packet.h lorcon_int.h \
+ drv_mac80211.h config.h drv_madwifing.h drv_tuntap.h
