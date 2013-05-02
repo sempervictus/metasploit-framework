@@ -6,6 +6,8 @@
 .ruby-version
 # RVM control file
 .rvmrc
+# RBX AST cache
+.rbx
 # YARD cache directory
 .yardoc
 # Mac OS X files

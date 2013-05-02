@@ -12,6 +12,10 @@ gem 'nokogiri'
 gem 'robots'
 # Needed by db.rb and Msf::Exploit::Capture
 gem 'packetfu', '1.1.8'
+# RBX Related improvements
+if Object.const_defined?(:RUBY_ENGINE) && RUBY_ENGINE == 'rbx'
+  gem 'rubinius-actor'
+end
 
 group :db do
 	# Needed for Msf::DbManager
@@ -60,3 +64,4 @@ group :test do
 	# Manipulate Time.now in specs
 	gem 'timecop'
 end
+
