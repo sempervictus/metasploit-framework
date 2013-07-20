@@ -296,7 +296,10 @@ class Utils
 			domain_uni +
 			user_uni +
 			name_uni +
-			session + "\x00"
+			session
+
+			padd = "\x00" * (blob.length % 4)
+			blob << padd
 		return blob
 
 	end

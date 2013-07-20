@@ -10,7 +10,7 @@ require 'rex/proto/dcerpc/exceptions'
 require 'rex/text'
 require 'rex/proto/smb/exceptions'
 
-	attr_accessor :handle, :socket, :options, :last_response, :context, :no_bind, :ispipe, :smb
+	attr_accessor :handle, :socket, :options, :last_response, :context, :no_bind, :ispipe, :smb, :auth_type, :auth_level
 
 	# initialize a DCE/RPC Function Call
 	def initialize(handle, socket, useroptions = Hash.new)
@@ -132,7 +132,6 @@ require 'rex/proto/smb/exceptions'
 	end
 
 	def read()
-
 		max_read = self.options['pipe_read_max_size'] || 1024*1024
 		min_read = self.options['pipe_read_min_size'] || max_read
 
@@ -211,7 +210,6 @@ require 'rex/proto/smb/exceptions'
 	# Write data to the underlying socket, limiting the sizes of the writes based on
 	# the pipe_write_min / pipe_write_max options.
 	def write(data)
-
 		max_write = self.options['pipe_write_max_size'] || data.length
 		min_write = self.options['pipe_write_min_size'] || max_write
 
@@ -234,10 +232,44 @@ require 'rex/proto/smb/exceptions'
 		data.length
 	end
 
+	def alter_context_auth(opts, ntlm_options)
+		alter, context = Rex::Proto::DCERPC::Packet.make_alter_context_auth(
+			self.handle.uuid[0],
+			self.handle.uuid[1],
+			self.last_response,
+			opts,
+			ntlm_options,
+			self.options['auth_type'],
+			self.options['auth_level']
+		)
+
+		raise 'make_alter failed' if !alter
+
+                self.write(alter)
+                raw_response = self.read()
+                response = Rex::Proto::DCERPC::Response.new(raw_response)
+                self.last_response = response
+	end
+
+	def auth(opts, ntlm_options)
+		auth, context = Rex::Proto::DCERPC::Packet.make_auth(
+			self.last_response,
+			opts,
+			ntlm_options,
+			self.options['auth_type'],
+			self.options['auth_level']
+		)
+
+		raise 'make_auth failed' if !auth
+
+		self.write(auth)
+	end
+
 	def bind()
 		require 'rex/proto/dcerpc/packet'
 		bind = ''
 		context = ''
+		
 		if self.options['fake_multi_bind']
 
 			args = [ self.handle.uuid[0], self.handle.uuid[1] ]
@@ -252,14 +284,26 @@ require 'rex/proto/smb/exceptions'
 
 			bind, context = Rex::Proto::DCERPC::Packet.make_bind_fake_multi(*args)
 		else
-			bind, context = Rex::Proto::DCERPC::Packet.make_bind(*self.handle.uuid)
+			if self.options['smb_domain']
+		                ntlm_options = {
+        	                        :signing                => true, 
+                	                :usentlm2_session       => true,
+                        	        :use_ntlmv2             => false,
+                                	:send_lm                => true,
+                                	:send_ntlm              => true,
+                                	:use_lanman_key         => false
+                                }
+
+				bind, context = Rex::Proto::DCERPC::Packet.make_bind_auth(self.handle.uuid[0], self.handle.uuid[1], self.options['smb_domain'], self.options['smb_name'], ntlm_options, self.options['auth_type'], self.options['auth_level'])
+			else
+				bind, context = Rex::Proto::DCERPC::Packet.make_bind(self.handle.uuid[0], self.handle.uuid[1])
+			end
 		end
 
 		raise 'make_bind failed' if !bind
 
 		self.write(bind)
 		raw_response = self.read()
-
 		response = Rex::Proto::DCERPC::Response.new(raw_response)
 		self.last_response = response
 		if response.type == 12 or response.type == 15
@@ -270,6 +314,37 @@ require 'rex/proto/smb/exceptions'
 		else
 			raise "Could not bind to #{self.handle}"
 		end
+	end
+	
+	def call_auth(function, data, object_id, do_recv=true)
+		call_packets = Rex::Proto::DCERPC::Packet.make_request_auth(function, data, data.length, self.context, object_id, self.options['auth_type'], self.options['auth_level'])
+		call_packets.each { |packet|
+			self.write(packet)
+		}
+
+		return true if not do_recv
+
+		raw_response = ''
+		begin
+                        raw_response = self.read()
+                rescue ::EOFError
+                        raise Rex::Proto::DCERPC::Exceptions::NoResponse
+                end
+
+                if (raw_response == nil or raw_response.length == 0)
+                        raise Rex::Proto::DCERPC::Exceptions::NoResponse
+                end
+
+
+                self.last_response = Rex::Proto::DCERPC::Response.new(raw_response)
+
+                if self.last_response.type == 3
+                        e = Rex::Proto::DCERPC::Exceptions::Fault.new
+                        e.fault = self.last_response.status
+                        raise e
+                end
+
+                self.last_response.stub_data
 	end
 
 	# Perform a DCE/RPC Function Call
@@ -286,8 +361,9 @@ require 'rex/proto/smb/exceptions'
 		if options['random_object_id']
 			object_id = Rex::Proto::DCERPC::UUID.uuid_unpack(Rex::Text.rand_text(16))
 		end
-
+		
 		call_packets = Rex::Proto::DCERPC::Packet.make_request(function, data, frag_size, self.context, object_id)
+
 		call_packets.each { |packet|
 			self.write(packet)
 		}
