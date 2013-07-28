@@ -46,6 +46,7 @@
 
 require 'rex/proto/ntlm/constants'
 require 'rex/proto/ntlm/base'
+require 'zlib'
 
 module Rex
 module Proto
@@ -404,6 +405,26 @@ BASE = Rex::Proto::NTLM::Base
 		else #128
 			return session_key[0,16]
 		end
+	end
+
+
+	# http://msdn.microsoft.com/en-us/library/cc236701.aspx
+	# NTLMSSP_MESSAGE_SIGNATURE for Extended Session Security
+	def self.make_ess_message_signature(signing_key, sealing_key, message, seq_num, handle)
+		raise RuntimeError, "No OpenSSL support" if not @@loaded_openssl
+		version = [1].pack('V')
+
+                concat << seq_num << message
+                hmac_md5 = OpenSSL::HMAC.digest(OpenSSL::Digest::MD5.new, signing_key, concat[0..7])
+
+		if sealing_key == ''
+			checksum = hmac_md5
+		else
+			handle.key = sealing_key
+			checksum = handle.update(hmac_md5)
+		end
+
+		return version << checksum
 	end
 
 end

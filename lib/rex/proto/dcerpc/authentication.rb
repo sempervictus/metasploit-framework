@@ -7,14 +7,22 @@ class Authentication
 require 'rex/proto/dcerpc/uuid'
 require 'rex/proto/dcerpc/response'
 require 'rex/text'
+	
+	def def initialize()
+		self.handle = OpenSSL::Cipher::Cipher.new('rc4')
+		self.handle.encrypt
+		self.signing_key = ''
+		self.sealing_key = ''
+		self.seq_num = 0
+	end
 
-	def self.ntlmssp_verifier()
-		buff =
-		[ 
-			1,
-			"\xeb\x07\x82\x29\xaf\x5a\x89\x9e\x00\x00\x00\x00"
-		].pack('Va*')
-		return buff
+	def self.ntlmssp_verifier(message)
+		return Rex::Proto::NTLM::Crypto.make_ess_message_signature(
+			self.signing_key,
+			self.sealing_key,
+			message,
+			self.seq_num,
+			self.handle)
 	end
 	
 	def self.auth_buff(auth_type, auth_level, pad_length=0)
@@ -62,9 +70,7 @@ require 'rex/text'
 			ntlm_options
 		)
 
-                enc_session_key = ''
-
-		signing_key, enc_session_key, ntlmssp_flags = Rex::Proto::NTLM::Utils.create_session_key(
+		self.signing_key, self.sealing_key, ntlmssp_flags = Rex::Proto::NTLM::Utils.create_session_key(
 			flags,
 			opts[:server_ntlmssp_flags],
 			opts[:user],
@@ -83,7 +89,7 @@ require 'rex/text'
 				opts[:user],
 				resp_lm,
 				resp_ntlm,
-				enc_session_key,
+				self.signing_key,
 				flags)
 		else
 			ntlm_3 = Rex::Proto::NTLM::Utils.make_ntlmssp_blob_auth(
@@ -92,7 +98,7 @@ require 'rex/text'
                                 opts[:user],
                                 resp_lm,
                                 resp_ntlm,
-                                enc_session_key,
+                                self.signing_key,
                                 flags)
 		end
 
