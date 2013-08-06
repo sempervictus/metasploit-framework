@@ -8,7 +8,7 @@ require 'rex/proto/dcerpc/uuid'
 require 'rex/proto/dcerpc/response'
 require 'rex/text'
 	
-	def def initialize()
+	def self.initialize()
 		self.handle = OpenSSL::Cipher::Cipher.new('rc4')
 		self.handle.encrypt
 		self.signing_key = ''
