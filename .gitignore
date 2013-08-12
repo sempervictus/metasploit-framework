@@ -44,7 +44,3 @@ tags
 *~
 # Ignore backups of retabbed files
 *.notab
-# Other people's work
-external/ruby-lorcon2/lorcon2
-# Rubinius ASTs
-.rbx

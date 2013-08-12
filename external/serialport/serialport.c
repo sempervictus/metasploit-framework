@@ -18,8 +18,7 @@
 #define VERSION 	"0.6.1-msf"
 
 #include <ruby.h>    /* ruby inclusion */
-// #include <rubyio.h>  /* ruby io inclusion */
-#include <ruby/io.h>
+#include <rubyio.h>  /* ruby io inclusion */
 
 struct modem_params {
   int data_rate;

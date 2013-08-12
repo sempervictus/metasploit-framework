@@ -57,32 +57,21 @@ class Event
 	#
 	alias notify set
 
-	#
-	# Waits for the event to become signaled.  Timeout is measured in
-	# seconds.  Raises TimeoutError if the condition does not become signaled.
-	#
+        #   
+        # Waits for the event to become signaled.  Timeout is measured in
+        # seconds.  Raises TimeoutError if the condition does not become signaled.
+        #   
+        def wait(t = Infinite)
+                self.mutex.synchronize {
+                        break if (self.state == true)
 
-	begin
-		# XXX: we need to replace this code
-		#      continuations slow down YARV
-		require "continuation" if not defined? callcc
-	rescue ::LoadError
-	end
+                        Timeout.timeout(t) {
+                                self.cond.wait(self.mutex)
+                        }   
+                }   
 
-	def wait(t = Infinite)
-		callcc { |ctx|
-			self.mutex.synchronize {
-				ctx.call if (self.state == true)
-
-				Timeout.timeout(t) {
-					self.cond.wait(self.mutex)
-				}
-			}
-		}
-
-		return self.param
-	end
-
+                return self.param
+        end
 protected
 
 	attr_accessor :state, :auto_reset # :nodoc:
