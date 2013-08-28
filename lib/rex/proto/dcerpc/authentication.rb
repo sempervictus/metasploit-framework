@@ -1,13 +1,16 @@
 # -*- coding: binary -*-
+
+require 'rex/proto/dcerpc/uuid'
+require 'rex/proto/dcerpc/response'
+require 'rex/text'
+
 module Rex
 module Proto
 module DCERPC
 class Authentication
 
-require 'rex/proto/dcerpc/uuid'
-require 'rex/proto/dcerpc/response'
-require 'rex/text'
-	
+	attr_accessor :signing_key, :sealing_key
+
 	def self.initialize()
 		self.handle = OpenSSL::Cipher::Cipher.new('rc4')
 		self.handle.encrypt
@@ -50,7 +53,7 @@ require 'rex/text'
 		return buff+ntlm_1, ntlm_1.length
 	end
 
-	def self.auth_ntlm_3(auth_type, auth_level, last_response, opts, ntlm_options)
+	def auth_ntlm_3(auth_type, auth_level, last_response, opts, ntlm_options)
 		flags = Rex::Proto::NTLM::Utils.make_ntlm_flags(ntlm_options)
 		start = last_response.raw.index("NTLMSSP")
                 ntlmssp = last_response.raw[start..-1]
@@ -102,7 +105,7 @@ require 'rex/text'
                                 flags)
 		end
 
-		buff = self.auth_buff(auth_type, auth_level)
+		buff = self.class.auth_buff(auth_type, auth_level)
 		return buff+ntlm_3, ntlm_3.length
 	end
 

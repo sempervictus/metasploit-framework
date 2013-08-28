@@ -82,7 +82,7 @@ require 'rex/text'
                         xfer_syntax_uuid = UUID.uuid_pack(UUID.xfer_syntax_uuid)
                 end
 
-                ntlm3, auth_length = Rex::Proto::DCERPC::Authentication.auth_ntlm_3(auth_type, auth_level, last_response, opts, ntlm_options)
+                ntlm3, auth_length = Rex::Proto::DCERPC::Authentication.new.auth_ntlm_3(auth_type, auth_level, last_response, opts, ntlm_options)
                 frag_length = 80+auth_length
 
                 # Create the alter_context request packet
