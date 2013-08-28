@@ -28,11 +28,11 @@ require 'rex/text'
 	def self.auth_buff(auth_type, auth_level, pad_length=0)
 		buff =
                 [
-                        auth_type,      # 9: SPNEGO 10: NTLMSSP
-                        auth_level,      # 2: Connect 5: PacketIntegrity
-                        pad_length,      # Auth pad len
-                        0,      # Auth rsrvd
-                        0x6B8B4567, # Auth context id
+                        auth_type  || 9,    # 9: SPNEGO 10: NTLMSSP
+                        auth_level || 2,    # 2: Connect 5: PacketIntegrity
+                        pad_length,      	# Auth pad len
+                        0,      		 	# Auth rsrvd
+                        0x6B8B4567, 	 	# Auth context id
                 ].pack('CCCCV')
 
 		return buff

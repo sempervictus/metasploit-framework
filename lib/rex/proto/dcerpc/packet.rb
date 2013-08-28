@@ -43,7 +43,7 @@ require 'rex/text'
                 end
 
                 spnego, auth_length = Rex::Proto::DCERPC::Authentication.auth_ntlm_1(auth_type, auth_level, domain, name, ntlm_options)
-		frag_length = 80+auth_length
+				frag_length = 80+auth_length
 
                 # Create the bind request packet
                 buff =

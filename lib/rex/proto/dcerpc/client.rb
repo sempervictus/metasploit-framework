@@ -269,8 +269,8 @@ require 'rex/proto/smb/exceptions'
 		require 'rex/proto/dcerpc/packet'
 		bind = ''
 		context = ''
-		
-		if self.options['fake_multi_bind']
+		# This was apparently always seen as true by MSF regardless of value
+		if self.options['fake_multi_bind'] and self.options['fake_multi_bind'] == 1
 
 			args = [ self.handle.uuid[0], self.handle.uuid[1] ]
 
