@@ -1,11 +1,11 @@
 require 'thread'
 
+require 'rex/proto/proxy/socks4a'
+require 'rex/proto/proxy/http'
+
 module Rex
 module Proto
 module Proxy
-
-require 'rex/proto/proxy/socks4a'
-require 'rex/proto/proxy/http'
 
 #
 # A mixin for a socket to perform a relay to another socket.
