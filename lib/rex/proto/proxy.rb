@@ -4,8 +4,8 @@ module Rex
 module Proto
 module Proxy
 
-autoload :Socks4a, 'rex/proto/proxy/socks4a'
-autoload :Http, 'rex/proto/proxy/http'
+require 'rex/proto/proxy/socks4a'
+require 'rex/proto/proxy/http'
 
 #
 # A mixin for a socket to perform a relay to another socket.
