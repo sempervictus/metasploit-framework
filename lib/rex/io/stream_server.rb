@@ -102,6 +102,15 @@ module StreamServer
   end
 
   #
+  # Remove a client socket without closing it
+  #
+  def remove_client(client)
+    if (client)
+      clients.delete(client)
+    end
+  end
+
+  #
   # This method waits on the server listener thread
   #
   def wait

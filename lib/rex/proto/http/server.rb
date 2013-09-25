@@ -184,6 +184,13 @@ class Server
   end
 
   #
+  # Remove the client without closing it.
+  #
+  def remove_client(cli)
+    listener.remove_client(cli)
+  end
+
+  #
   # Mounts a directory or resource as being serviced by the supplied handler.
   #
   def mount(root, handler, long_call = false, *args)
