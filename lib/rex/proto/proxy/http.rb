@@ -9,10 +9,42 @@ module Proto
 module Proxy
 
 
+module Request
+  def initialize
+    super
+    self.uri_obj = nil
+  end
+
+  def uri_obj=
+    self.uri = uri_obj
+  end
+
+  attr_accessor :uri_obj
+end
+
+
 #
 # The Proxy::Http class
 #
 class Http < Rex::Proto::Http::Server
+
+  #
+  # Callbacks that can be modified by consumers
+  #
+  def on_http_request(cli, req)
+    if (on_http_request_proc)
+      on_http_request_proc.call(cli, req)
+    end
+  end
+
+  def on_http_response(cli, res)
+    if (on_http_response_proc)
+      on_http_response_proc.call(cli, res)
+    end
+  end
+
+  attr_accessor :on_http_request_proc
+  attr_accessor :on_http_response_proc
 
 protected
 
@@ -53,7 +85,12 @@ protected
 
     when "GET", "POST"
       uri = URI.parse(rebuild_uri(request))
-      #print_status("#{request.method} - #{uri.scheme} :// #{uri.host} : #{uri.port} #{uri.path}")
+
+      # Allow callers to change the incoming request
+      request.extend(Request)
+      request.uri_obj = uri
+
+      on_http_request(cli, request)
 
       # Now, we must connect to the target server and repeat the request.
       rcli = Rex::Proto::Http::Client.new(
@@ -75,11 +112,25 @@ protected
         # Read the response
         resp = rcli.send_recv(rreq)
 
+      rescue ::Exception => e
+        send_e404(cli, request)
+        wlog("Exception in Proxy dispatch_request while relaying request: #{e.class}: #{e}")
+        wlog("Call Stack\n#{e.backtrace.join("\n")}")
+
+      end
+
+      # Don't rescue exceptions in this, they should be shown to whoever is
+      # implementing on_http_response.
+      on_http_response(cli, resp)
+
+      begin
         # Send it back to the requesting client
         cli.put(resp.to_s)
 
-      rescue
+      rescue ::Exception => e
         send_e404(cli, request)
+        wlog("Exception in Proxy dispatch_request while relaying response: #{e.class}: #{e}")
+        wlog("Call Stack\n#{e.backtrace.join("\n")}")
 
       end
 
