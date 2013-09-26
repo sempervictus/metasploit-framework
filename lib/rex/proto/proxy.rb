@@ -61,7 +61,7 @@ module Relay
         end
 
         if( closed )
-          @relay_client.stop
+          @relay_client.stop if @relay_client
           ::Thread.exit
         end
       end

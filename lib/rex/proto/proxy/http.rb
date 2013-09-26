@@ -177,11 +177,10 @@ protected
       # only tunnel SSL requests
       if port != 443
         send_e404(cli, request)
+        ilog("HttpProxy: Rejecting CONNECT request for #{host}:#{port} from #{cli.peerhost} ...", LEV_2);
         close_client(cli)
         return
       end
-
-      #print_status("#{request.method}: #{host} : #{port} (#{request.body.length} byte body)")
 
       # Now, we must connect to the target server and relay the data...
       # NOTE: according to rfc2817, the data accompanying this request should be included too.
@@ -211,13 +210,12 @@ protected
       # Relay the data back and forth
       cli.extend(Rex::Proto::Proxy::Relay)
       rcli.extend(Rex::Proto::Proxy::Relay)
-      cli.relay(self, "HttpProxySSLRelay (c2s)", rcli)
-      rcli.relay(self, "HttpProxySSLRelay (s2c)", cli)
+      cli.relay(nil, "HttpProxySSLRelay (c2s)", rcli)
+      rcli.relay(nil, "HttpProxySSLRelay (s2c)", cli)
 
       # If we are given a trusted CA cert to sign with, we could also 
       # transparently generate a CERT and MITM the SSL data.
 
-      raise ::EOFError
     end
 
   end
