@@ -97,7 +97,16 @@ protected
     case request.method
 
     when "GET", "POST"
-      uri = URI.parse(rebuild_uri(request))
+      begin
+        uri = URI.parse(rebuild_uri(request))
+      rescue ::Exception => e
+        send_e404(cli, request)
+        wlog("Exception in HttpProxy dispatch_request while parsing request URI: #{e.class}: #{e}")
+        wlog("Call Stack\n#{e.backtrace.join("\n")}")
+        close_client(cli)
+        return
+
+      end
 
       # Allow callers to change the incoming request
       request.extend(Request)
@@ -130,8 +139,11 @@ protected
 
       rescue ::Exception => e
         send_e404(cli, request)
-        wlog("Exception in Proxy dispatch_request while relaying request: #{e.class}: #{e}")
+        wlog("Exception in HttpProxy dispatch_request while relaying request: #{e.class}: #{e}")
         wlog("Call Stack\n#{e.backtrace.join("\n")}")
+        close_client(rcli)
+        close_client(cli)
+        return
 
       end
 
@@ -149,7 +161,7 @@ protected
 
       rescue ::Exception => e
         send_e404(cli, request)
-        wlog("Exception in Proxy dispatch_request while relaying response: #{e.class}: #{e}")
+        wlog("Exception in HttpProxy dispatch_request while relaying response: #{e.class}: #{e}")
         wlog("Call Stack\n#{e.backtrace.join("\n")}")
 
       end
@@ -181,7 +193,9 @@ protected
           })
 
       rescue ::Exception => e
-        #print_error("Could not connect to requested host (#{host}): #{e.message}")
+        wlog("Exception in Proxy dispatch_request while handling CONNECT: #{e.class}: #{e}")
+        wlog("Call Stack\n#{e.backtrace.join("\n")}")
+
         send_e404(cli, request)
         close_client(cli)
         return
