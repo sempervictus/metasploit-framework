@@ -80,7 +80,6 @@ protected
   # Overrides for stuff from Rex::Proto::Http::Server
 
   def dispatch_request(cli, request)
-    #print_status("request: #{request.inspect}")
     case request.method
 
     when "GET", "POST"
