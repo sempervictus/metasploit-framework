@@ -127,7 +127,7 @@ protected
 
       # Send the request
       rreq = rcli.request_raw({
-        'uri' => uri.path,
+        'uri' => uri.path + "?" + uri.query,
         'method' => request.method,
         'headers' => request.headers,
         'data' => request.body,
