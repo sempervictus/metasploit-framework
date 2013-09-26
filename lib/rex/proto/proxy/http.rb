@@ -97,8 +97,11 @@ protected
         uri.host,
         uri.port || 80,
         self.context)
-      # We dont want to send the original host header, though it should be the same
+
+      # Delete headers that end up getting duplicated. They should end up the
+      # same value, but having two of them still isn't helpful :-/
       request.headers.delete('Host')
+      request.headers.delete('Content-Length')
 
       # Send the request
       rreq = rcli.request_raw({
