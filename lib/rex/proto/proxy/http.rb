@@ -23,6 +23,20 @@ module Request
 end
 
 
+module Response
+  def initialize
+    super
+    self.orig_req = nil
+  end
+
+  def orig_req=
+    self.req = orig_req
+  end
+
+  attr_accessor :orig_req
+end
+
+
 #
 # The Proxy::Http class
 #
@@ -120,6 +134,10 @@ protected
         wlog("Call Stack\n#{e.backtrace.join("\n")}")
 
       end
+
+      # Add the original request (prior to rebuilding)
+      resp.extend(Response)
+      resp.orig_req = request
 
       # Don't rescue exceptions in this, they should be shown to whoever is
       # implementing on_http_response.
