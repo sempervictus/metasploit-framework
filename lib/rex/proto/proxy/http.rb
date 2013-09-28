@@ -80,8 +80,11 @@ protected
       vars << "#{k}=#{v}"
     }
 
+    vars_comb = vars.join('&')
+    vars_comb.gsub!(/ /, '+')
+
     # combine resource and qstring
-    uri << vars.join('&')
+    uri << vars_comb
     uri
   end
 
