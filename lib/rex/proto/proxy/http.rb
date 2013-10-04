@@ -47,18 +47,28 @@ class Http < Rex::Proto::Http::Server
   #
   def on_http_request(cli, req)
     if (on_http_request_proc)
-      on_http_request_proc.call(cli, req)
+      return on_http_request_proc.call(cli, req)
     end
+    true
   end
 
   def on_http_response(cli, res)
     if (on_http_response_proc)
-      on_http_response_proc.call(cli, res)
+      return on_http_response_proc.call(cli, res)
     end
+    true
+  end
+
+  def on_http_connect(cli, res)
+    if (on_http_connect_proc)
+      return on_http_connect_proc.call(cli, res)
+    end
+    true
   end
 
   attr_accessor :on_http_request_proc
   attr_accessor :on_http_response_proc
+  attr_accessor :on_http_connect_proc
 
 protected
 
@@ -115,7 +125,7 @@ protected
       request.extend(Request)
       request.uri_obj = uri
 
-      on_http_request(cli, request)
+      return if not on_http_request(cli, request)
 
       # Now, we must connect to the target server and repeat the request.
       rcli = Rex::Proto::Http::Client.new(
@@ -156,7 +166,7 @@ protected
 
       # Don't rescue exceptions in this, they should be shown to whoever is
       # implementing on_http_response.
-      on_http_response(cli, resp)
+      return if not on_http_response(cli, resp)
 
       begin
         # Send it back to the requesting client
@@ -176,6 +186,8 @@ protected
     when "CONNECT"
       host,port = request.resource.split(':')
       port = port.to_i
+
+      return if not on_http_connect(cli, request)
       
       # only tunnel SSL requests
       if port != 443
