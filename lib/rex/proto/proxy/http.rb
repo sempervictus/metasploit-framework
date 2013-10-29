@@ -42,6 +42,27 @@ end
 #
 class Http < Rex::Proto::Http::Server
 
+
+  def initialize(port = 80, listen_host = '0.0.0.0', ssl = false, context = {}, comm = nil, ssl_cert = nil,
+    proxies = nil, rhost = nil, rport = nil, rssl = nil)
+    super(port, listen_host, ssl, context, comm, ssl_cert)
+    self.proxies = proxies # force requests through upstream proxy
+    self.rhost = (rhost.nil? or rhost.empty?) ? nil : rhost # force all requests to remote host
+    self.rport = rport.to_i == 0 ? nil : rport # ...
+    self.rssl = rssl == true ? true : nil # force remote ssl
+    self.strip_proxy_headers = false
+    # List of headers to strip from final request - %w{Connection Proxy-Connection Content-Length Host}
+    self.strip_headers = []
+  end
+
+  # #
+  # # Custom setter for header removals
+  # #
+  # def strip_headers=(header_names=[])
+  #   self.strip_headers = header_names.flatten.map { |hdr|
+  #      hdr.kind_of?(String) ? hdr.split(/,|\s/).compact : hdr
+  #   }.flatten.compact
+  # end
   #
   # Callbacks that can be modified by consumers
   #
@@ -69,6 +90,8 @@ class Http < Rex::Proto::Http::Server
   attr_accessor :on_http_request_proc
   attr_accessor :on_http_response_proc
   attr_accessor :on_http_connect_proc
+  attr_accessor :proxies, :rhost, :rport, :rssl
+  attr_accessor :strip_headers, :strip_proxy_headers
 
 protected
 
@@ -99,17 +122,26 @@ protected
   end
 
   def send_ok(cli, request)
-    ok = Rex::Proto::Http::Response::OK.new
-    cli.put(ok.to_s)
+    cli.put(Rex::Proto::Http::Response::OK.new.to_s)
   end
 
+  # 
+  # Removes proxy headers for "transparent" proxy
+  #
+  def strip_proxy_headers(request)
+    request.headers.select {|h| h.downcase.strip.match(/^proxy/)}.map do |hdr|
+      request.headers.delete(hdr)
+    end
+  end
 
   # Overrides for stuff from Rex::Proto::Http::Server
 
   def dispatch_request(cli, request)
+
     case request.method
 
     when "GET", "POST"
+    #, "PUT", "TRACE", "DELETE", "UPDATE"
       begin
         uri = URI.parse(rebuild_uri(request))
       rescue ::Exception => e
@@ -120,32 +152,46 @@ protected
         return
 
       end
-
+      uri.path = '/' if uri.path.empty?
+      $stdout.puts uri
       # Allow callers to change the incoming request
       request.extend(Request)
       request.uri_obj = uri
 
       return if not on_http_request(cli, request)
 
+      # Set destonation port, check hardcoded, then uri, fall back to 80
+      dport = self.rport.to_i > 0 ? self.rport : uri.port.to_i > 0 ? uri.port : 80  
+
       # Now, we must connect to the target server and repeat the request.
+      # Force request to target host, and port if specified, or proxy
       rcli = Rex::Proto::Http::Client.new(
-        uri.host,
-        uri.port || 80,
-        self.context)
+        self.rhost || uri.host,
+        dport,
+        self.context,
+        self.rssl,
+        nil,
+        self.proxies)
 
       # Delete headers that end up getting duplicated. They should end up the
       # same value, but having two of them still isn't helpful :-/
-      request.headers.delete('Host')
-      request.headers.delete('Content-Length')
+      # request.headers.delete('Host')
+      # request.headers.delete('Content-Length')
+
+      # Remove bothersome headers from requests
+      # self.strip_headers.map do |str_header|
+      #   request.headers.delete(str_header) 
+      # end
 
       # Send the request
+      uri.query = '?' + uri.query if uri.query.length > 0
       rreq = rcli.request_raw({
-        'uri' => uri.path + "?" + uri.query,
+        'uri' => uri.path + uri.query,
         'method' => request.method,
         'headers' => request.headers,
         'data' => request.body,
         })
-
+$stdout.puts(rreq.to_s)
       begin
         # Read the response
         resp = rcli.send_recv(rreq)
@@ -184,54 +230,60 @@ protected
       close_client(cli)
 
     when "CONNECT"
-      host,port = request.resource.split(':')
-      port = port.to_i
+      send_tcp_request(cli,request)
+    end
+  end
 
-      return if not on_http_connect(cli, request)
-      
-      # only tunnel SSL requests
-      if port != 443
-        send_e404(cli, request)
-        ilog("HttpProxy: Rejecting CONNECT request for #{host}:#{port} from #{cli.peerhost} ...", LEV_2);
-        close_client(cli)
-        return
-      end
+  def send_tcp_request(cli,request)
+    host,port = request.resource.split(':')
+    # Configure port and host settings if hard-coded
+    port = self.rport.to_i > 0 ?  self.rport : port.to_i > 0 ? port : 80 
+    host = self.rhost unless self.rhost.nil? or self.rhost.empty?
 
-      # Now, we must connect to the target server and relay the data...
-      # NOTE: according to rfc2817, the data accompanying this request should be included too.
-      begin
-        rcli = Rex::Socket::Tcp.create({
-          'PeerHost' => host,
-          'PeerPort' => port,
-          'Context'  => self.context,
-          })
+    return if not on_http_connect(cli, request)
+    $stdout.puts("Connecting to #{host} #{port} with self #{self.rhost} #{self.rport}")
+    # # only tunnel SSL requests
+    # if port != 443
+    #   send_e404(cli, request)
+    #   ilog("HttpProxy: Rejecting CONNECT request for #{host}:#{port} from #{cli.peerhost} ...", LEV_2);
+    #   close_client(cli)
+    #   return
+    # end
 
-      rescue ::Exception => e
-        wlog("Exception in Proxy dispatch_request while handling CONNECT: #{e.class}: #{e}")
-        wlog("Call Stack\n#{e.backtrace.join("\n")}")
+    # Now, we must connect to the target server and relay the data...
+    # NOTE: according to rfc2817, the data accompanying this request should be included too.
+    begin
+      rcli = Rex::Socket::Tcp.create({
+        'PeerHost' => host,
+        'PeerPort' => port.to_i,
+        'Context'  => self.context,
+        'Proxies'  => self.proxies
+        })
 
-        send_e404(cli, request)
-        close_client(cli)
-        return
+    rescue ::Exception => e
+      wlog("Exception in Proxy dispatch_request while handling CONNECT: #{e.class}: #{e}")
+      wlog("Call Stack\n#{e.backtrace.join("\n")}")
 
-      end
-
-      # don't let the server's client monitor see this guy anymore
-      remove_client(cli)
-
-      # Tell the client it's go time.
-      send_ok(cli, request)
-
-      # Relay the data back and forth
-      cli.extend(Rex::Proto::Proxy::Relay)
-      rcli.extend(Rex::Proto::Proxy::Relay)
-      cli.relay(nil, "HttpProxySSLRelay (c2s)", rcli)
-      rcli.relay(nil, "HttpProxySSLRelay (s2c)", cli)
-
-      # If we are given a trusted CA cert to sign with, we could also 
-      # transparently generate a CERT and MITM the SSL data.
+      send_e404(cli, request)
+      close_client(cli)
+      return
 
     end
+
+    # don't let the server's client monitor see this guy anymore
+    remove_client(cli)
+
+    # Tell the client it's go time.
+    send_ok(cli, request)
+
+    # Relay the data back and forth
+    cli.extend(Rex::Proto::Proxy::Relay)
+    rcli.extend(Rex::Proto::Proxy::Relay)
+    cli.relay(nil, "HttpProxySSLRelay (c2s)", rcli)#, self.on_http_request_proc)
+    rcli.relay(nil, "HttpProxySSLRelay (s2c)", cli)#, self.on_http_response_proc)
+
+    # If we are given a trusted CA cert to sign with, we could also 
+    # transparently generate a CERT and MITM the SSL data.
 
   end
 

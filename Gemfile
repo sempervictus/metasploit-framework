@@ -4,6 +4,8 @@ source 'https://rubygems.org'
 gem 'activesupport', '>= 3.0.0'
 # Needed for some admin modules (scrutinizer_add_user.rb)
 gem 'json'
+
+gem 'pry'
 # Needed by msfgui and other rpc components
 gem 'msgpack'
 # Needed by anemone crawler

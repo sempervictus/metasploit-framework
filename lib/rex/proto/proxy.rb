@@ -15,7 +15,7 @@ module Relay
   #
   # Relay data coming in from relay_sock to this socket.
   #
-  def relay( relay_client, thread_name, relay_sock )
+  def relay( relay_client, thread_name, relay_sock, &block )
     @relay_client = relay_client
     @relay_sock   = relay_sock
 
@@ -34,6 +34,7 @@ module Relay
           closed = true
         end
 
+        # Read data from relay
         if( closed == false )
           begin
             buf = @relay_sock.sysread( 32768 )
@@ -43,6 +44,10 @@ module Relay
           end
         end
 
+        # Do something with the data if needed
+        block.call(@relay_sock, buff ) if block
+
+        # Send resulting buffer to client
         if( closed == false )
           total_sent   = 0
           total_length = buf.length
@@ -62,7 +67,7 @@ module Relay
 
         if( closed )
           @relay_client.stop if @relay_client
-          ::Thread.exit
+          ::Thread.exit 
         end
       end
     end
