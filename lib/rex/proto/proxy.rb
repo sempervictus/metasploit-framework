@@ -45,7 +45,10 @@ module Relay
         end
 
         # Do something with the data if needed
-        block.call(@relay_sock, buff ) if block
+        if block
+          $stdout.puts("PROXY BLOCK CALLED with #{buff}")
+          block.call( @relay_sock, buff ) 
+        end
 
         # Send resulting buffer to client
         if( closed == false )

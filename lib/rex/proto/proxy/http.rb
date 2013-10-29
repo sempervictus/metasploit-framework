@@ -50,19 +50,8 @@ class Http < Rex::Proto::Http::Server
     self.rhost = (rhost.nil? or rhost.empty?) ? nil : rhost # force all requests to remote host
     self.rport = rport.to_i == 0 ? nil : rport # ...
     self.rssl = rssl == true ? true : nil # force remote ssl
-    self.strip_proxy_headers = false
-    # List of headers to strip from final request - %w{Connection Proxy-Connection Content-Length Host}
-    self.strip_headers = []
   end
 
-  # #
-  # # Custom setter for header removals
-  # #
-  # def strip_headers=(header_names=[])
-  #   self.strip_headers = header_names.flatten.map { |hdr|
-  #      hdr.kind_of?(String) ? hdr.split(/,|\s/).compact : hdr
-  #   }.flatten.compact
-  # end
   #
   # Callbacks that can be modified by consumers
   #
@@ -91,7 +80,6 @@ class Http < Rex::Proto::Http::Server
   attr_accessor :on_http_response_proc
   attr_accessor :on_http_connect_proc
   attr_accessor :proxies, :rhost, :rport, :rssl
-  attr_accessor :strip_headers, :strip_proxy_headers
 
 protected
 
@@ -125,23 +113,13 @@ protected
     cli.put(Rex::Proto::Http::Response::OK.new.to_s)
   end
 
-  # 
-  # Removes proxy headers for "transparent" proxy
-  #
-  def strip_proxy_headers(request)
-    request.headers.select {|h| h.downcase.strip.match(/^proxy/)}.map do |hdr|
-      request.headers.delete(hdr)
-    end
-  end
-
   # Overrides for stuff from Rex::Proto::Http::Server
 
   def dispatch_request(cli, request)
 
     case request.method
 
-    when "GET", "POST"
-    #, "PUT", "TRACE", "DELETE", "UPDATE"
+    when "GET", "POST", "PUT", "TRACE", "DELETE", "UPDATE"
       begin
         uri = URI.parse(rebuild_uri(request))
       rescue ::Exception => e
@@ -152,8 +130,7 @@ protected
         return
 
       end
-      uri.path = '/' if uri.path.empty?
-      $stdout.puts uri
+      uri.path << '/' unless uri.path[-1] == '/'
       # Allow callers to change the incoming request
       request.extend(Request)
       request.uri_obj = uri
@@ -178,11 +155,6 @@ protected
       # request.headers.delete('Host')
       # request.headers.delete('Content-Length')
 
-      # Remove bothersome headers from requests
-      # self.strip_headers.map do |str_header|
-      #   request.headers.delete(str_header) 
-      # end
-
       # Send the request
       uri.query = '?' + uri.query if uri.query.length > 0
       rreq = rcli.request_raw({
@@ -191,7 +163,6 @@ protected
         'headers' => request.headers,
         'data' => request.body,
         })
-$stdout.puts(rreq.to_s)
       begin
         # Read the response
         resp = rcli.send_recv(rreq)
@@ -241,14 +212,6 @@ $stdout.puts(rreq.to_s)
     host = self.rhost unless self.rhost.nil? or self.rhost.empty?
 
     return if not on_http_connect(cli, request)
-    $stdout.puts("Connecting to #{host} #{port} with self #{self.rhost} #{self.rport}")
-    # # only tunnel SSL requests
-    # if port != 443
-    #   send_e404(cli, request)
-    #   ilog("HttpProxy: Rejecting CONNECT request for #{host}:#{port} from #{cli.peerhost} ...", LEV_2);
-    #   close_client(cli)
-    #   return
-    # end
 
     # Now, we must connect to the target server and relay the data...
     # NOTE: according to rfc2817, the data accompanying this request should be included too.
@@ -279,8 +242,8 @@ $stdout.puts(rreq.to_s)
     # Relay the data back and forth
     cli.extend(Rex::Proto::Proxy::Relay)
     rcli.extend(Rex::Proto::Proxy::Relay)
-    cli.relay(nil, "HttpProxySSLRelay (c2s)", rcli)#, self.on_http_request_proc)
-    rcli.relay(nil, "HttpProxySSLRelay (s2c)", cli)#, self.on_http_response_proc)
+    cli.relay(nil, "HttpProxySSLRelay (c2s)", rcli, self.on_http_connect_proc)
+    rcli.relay(nil, "HttpProxySSLRelay (s2c)", cli, self.on_http_response_proc)
 
     # If we are given a trusted CA cert to sign with, we could also 
     # transparently generate a CERT and MITM the SSL data.

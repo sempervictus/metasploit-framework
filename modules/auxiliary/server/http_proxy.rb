@@ -41,13 +41,14 @@ class Metasploit3 < Msf::Auxiliary
   end
   
   def proxy_action_connect(cli,req)
-    print_good("Client #{cli} connected\nAsking for #{req.to_s}\n")
+    # print_good("Client #{cli} connected\nAsking for #{req.to_s}\n")
     true
   end
   # Do stuff with responses
   def proxy_action_response(cli,res)
     if datastore['HTTP::proxy::MITM::response']
-      make_subs(res) if datastore['SUBSTITUTIONS']
+      make_subs(res) if @substitutions.length > 0
+      print_good res.to_s
     end
     if datastore['HTTP::proxy::report'] and ([200,401,403] + (500..599).to_a).include?(res.code)
       log_response(cli,res)
@@ -57,10 +58,9 @@ class Metasploit3 < Msf::Auxiliary
 
   # Do stuff with requests
   def proxy_action_request(cli,req)
-    # Fix up referer if running as normal HTTP proxy
-    # set_referer(cli,request)
+    # vprint_good("#{cli} requested #{req}")
     if datastore['HTTP::proxy::MITM::request']
-      make_subs(req) if datastore['SUBSTITUTIONS']
+      make_subs(req) if @substitutions.length > 0
     end
     true
   end
@@ -122,8 +122,13 @@ class Metasploit3 < Msf::Auxiliary
   end
 
   # Run substitution sets through response
-  def make_subs(resp)
-    resp = Rex::Proto::Http::Response.new(resp.to_s)
+  # TODO: address chunked encoding mess from tcp proxy
+  def make_subs(res)
+    File.open('/tmp/resp','w+') {|f| f.puts res}
+    return if @substitutions.empty?
+    resp = Rex::Proto::Http::Response.new
+    resp.parse(res)
+    print_good
     @substitutions.each do |sub_set|
       resp.body.gsub!(sub_set[0],sub_set[1])
       if datastore['HTTP::proxy::MITM::headers']
@@ -135,6 +140,8 @@ class Metasploit3 < Msf::Auxiliary
         end 
       end
     end
+    res = resp.to_s
+    print_good res
   end
 
   # Convert substitution definition strings to gsub compatible format
