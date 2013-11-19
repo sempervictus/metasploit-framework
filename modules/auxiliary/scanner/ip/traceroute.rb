@@ -121,10 +121,10 @@ class Metasploit3 < Msf::Auxiliary
 
     #Add Report
     report_note(
-      :host	=> ip,
-      :proto	=> 'ip',
-      :type	=> 'traceroute',
-      :data	=> route_map.to_csv
+      :host  => ip,
+      :proto => 'ip',
+      :type  => 'traceroute',
+      :data  => route_map.to_csv
     )
   end
 
