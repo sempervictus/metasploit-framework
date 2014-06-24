@@ -1,17 +1,13 @@
 # post/windows/gather/enum_vnc_pw.rb
 
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# web site for more information on licensing and terms of use.
-#   http://metasploit.com/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
 require 'msf/core'
 require 'rex'
-require 'msf/core/post/windows/registry'
 require 'rex/parser/ini'
-require 'msf/core/post/windows/user_profiles'
 require 'msf/core/auxiliary/report'
 
 class Metasploit3 < Msf::Post
@@ -241,7 +237,7 @@ class Metasploit3 < Msf::Post
 
   def run
     print_status("Looking for WinSCP.ini file storage...")
-    get_ini(client.fs.file.expand_path("%PROGRAMFILES%")+'\\WinSCP\\WinSCP.ini')
+    get_ini(client.fs.file.expand_path("%PROGRAMFILES%\\WinSCP\\WinSCP.ini"))
     print_status("Looking for Registry Storage...")
     get_reg()
     print_status("Done!")

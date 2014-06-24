@@ -12,8 +12,20 @@ require 'msf/core'
 module Msf::Payload::Windows
 
   require 'msf/core/payload/windows/prepend_migrate'
+
   # Provides the #prepends method
+  # XXX: For some unfathomable reason, the order of requires here is
+  # important. If this include happens after require'ing the files
+  # below, it causes the windows/exec payload (and probably others) to
+  # somehow not have PrependMigrate despite having Payload::Windows,
+  # which leads to a NoMethodError on #prepends
   include Msf::Payload::Windows::PrependMigrate
+
+  require 'msf/core/payload/windows/dllinject'
+  require 'msf/core/payload/windows/exec'
+  require 'msf/core/payload/windows/loadlibrary'
+  require 'msf/core/payload/windows/reflectivedllinject'
+  require 'msf/core/payload/windows/x64/reflectivedllinject'
 
   #
   # ROR hash associations for some of the exit technique routines.
@@ -60,7 +72,7 @@ module Msf::Payload::Windows
 
     register_options(
       [
-        Msf::OptRaw.new('EXITFUNC', [ true, "Exit technique: #{@@exit_types.keys.join(", ")}", 'process' ])
+        Msf::OptEnum.new('EXITFUNC', [true, 'Exit technique', 'process', @@exit_types.keys])
       ], Msf::Payload::Windows )
     ret
   end

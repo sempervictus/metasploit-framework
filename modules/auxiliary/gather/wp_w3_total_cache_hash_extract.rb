@@ -1,8 +1,6 @@
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# web site for more information on licensing and terms of use.
-#   http://metasploit.com/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
 require 'msf/core'
@@ -32,7 +30,7 @@ class Metasploit3 < Msf::Auxiliary
         ],
       'Author'        =>
         [
-          'Christian Mehlmauer <FireFart[at]gmail.com>',  # Metasploit module
+          'Christian Mehlmauer',  # Metasploit module
           'Jason A. Donenfeld <Jason[at]zx2c4.com>'       # POC
         ]
     )
@@ -92,7 +90,7 @@ class Metasploit3 < Msf::Auxiliary
         key_md5 = ::Rex::Text.md5(key)
         hash_path = "/#{key_md5[0,1]}/#{key_md5[1,1]}/#{key_md5[2,1]}/#{key_md5}"
         url = normalize_uri(wordpress_url, datastore["WP_CONTENT_DIR"], "/w3tc/dbcache")
-        uri << hash_path
+        url << hash_path
 
         result = nil
         begin

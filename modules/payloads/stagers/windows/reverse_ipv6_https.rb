@@ -1,17 +1,21 @@
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# web site for more information on licensing and terms of use.
-#   http://metasploit.com/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
+
 
 require 'msf/core'
 require 'msf/core/handler/reverse_ipv6_https'
+require 'msf/core/module/deprecated'
 
 module Metasploit3
 
   include Msf::Payload::Stager
   include Msf::Payload::Windows
+  include Msf::Module::Deprecated
+
+  DEPRECATION_DATE = Date.new(2014, 7, 30)
+  DEPRECATION_REPLACEMENT = 'windows/meterpreter/reverse_https'
 
   def initialize(info = {})
     super(merge_info(info,

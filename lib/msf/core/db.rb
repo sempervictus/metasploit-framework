@@ -41,6 +41,7 @@ require 'rex/parser/nexpose_simple_nokogiri'
 require 'rex/parser/nmap_nokogiri'
 require 'rex/parser/openvas_nokogiri'
 require 'rex/parser/wapiti_nokogiri'
+require 'rex/parser/outpost24_nokogiri'
 
 # Legacy XML parsers -- these will be converted some day
 require 'rex/parser/ip360_aspl_xml'
@@ -358,7 +359,7 @@ class DBManager
     opts.each { |k,v|
       if (host.attribute_names.include?(k.to_s))
         unless host.attribute_locked?(k.to_s)
-          host[k] = v.to_s.gsub(/[\x00-\x1f]/, '')
+          host[k] = v.to_s.gsub(/[\x00-\x1f]/n, '')
         end
       else
         dlog("Unknown attribute for ::Mdm::Host: #{k}")
@@ -481,7 +482,7 @@ class DBManager
 
       if (host.attribute_names.include?(k.to_s))
         unless host.attribute_locked?(k.to_s)
-          host[k] = v.to_s.gsub(/[\x00-\x1f]/, '')
+          host[k] = v.to_s.gsub(/[\x00-\x1f]/n, '')
         end
       else
         dlog("Unknown attribute for Host: #{k}")
@@ -1536,19 +1537,19 @@ class DBManager
     if (token[0])
       # convert the token to US-ASCII from UTF-8 to prevent an error
       token[0] = token[0].unpack("C*").pack("C*")
-      token[0] = token[0].gsub(/[\x00-\x1f\x7f-\xff]/){|m| "\\x%.2x" % m.unpack("C")[0] }
+      token[0] = token[0].gsub(/[\x00-\x1f\x7f-\xff]/n){|m| "\\x%.2x" % m.unpack("C")[0] }
     end
 
     if (token[1])
       token[1] = token[1].unpack("C*").pack("C*")
-      token[1] = token[1].gsub(/[\x00-\x1f\x7f-\xff]/){|m| "\\x%.2x" % m.unpack("C")[0] }
+      token[1] = token[1].gsub(/[\x00-\x1f\x7f-\xff]/n){|m| "\\x%.2x" % m.unpack("C")[0] }
     end
 
     ret = {}
 
-    #Check to see if the creds already exist. We look also for a downcased username with the
-    #same password because we can fairly safely assume they are not in fact two seperate creds.
-    #this allows us to hedge against duplication of creds in the DB.
+    # Check to see if the creds already exist. We look also for a downcased username with the
+    # same password because we can fairly safely assume they are not in fact two seperate creds.
+    # this allows us to hedge against duplication of creds in the DB.
 
     if duplicate_ok
     # If duplicate usernames are okay, find by both user and password (allows
@@ -2091,24 +2092,15 @@ class DBManager
       loot.service_id = opts[:service][:id]
     end
 
-    loot.path  = path
-    loot.ltype = ltype
+    loot.path         = path
+    loot.ltype        = ltype
     loot.content_type = ctype
-    loot.data  = data
-    loot.name  = name if name
-    loot.info  = info if info
+    loot.data         = data
+    loot.name         = name if name
+    loot.info         = info if info
+    loot.workspace    = wspace
     msf_import_timestamps(opts,loot)
     loot.save!
-
-    if !opts[:created_at]
-=begin
-      if host
-        host.updated_at = host.created_at
-        host.state      = HostState::Alive
-        host.save!
-      end
-=end
-    end
 
     ret[:loot] = loot
   }
@@ -2180,33 +2172,61 @@ class DBManager
   end
 
 
-  #
-  # Find or create a task matching this type/data
-  #
+  # TODO This method does not attempt to find. It just creates
+  # a report based on the passed params.
   def find_or_create_report(opts)
     report_report(opts)
   end
 
+  # Creates a Report based on passed parameters. Does not handle
+  # child artifacts.
+  # @param opts [Hash]
+  # @return [Integer] ID of created report
   def report_report(opts)
     return if not active
   ::ActiveRecord::Base.connection_pool.with_connection {
-    wspace = opts.delete(:workspace) || workspace
-    path = opts.delete(:path) || (raise RuntimeError, "A report :path is required")
 
-    ret = {}
-    user      = opts.delete(:user)
-    options   = opts.delete(:options)
-    rtype     = opts.delete(:rtype)
-    report    = wspace.reports.new
-    report.created_by = user
-    report.options = options
-    report.rtype = rtype
-    report.path = path
-    msf_import_timestamps(opts,report)
-    report.save!
+    report = Report.new(opts)
+    unless report.valid?
+      errors = report.errors.full_messages.join('; ')
+      raise RuntimeError "Report to be imported is not valid: #{errors}"
+    end
+    report.state = :complete # Presume complete since it was exported
+    report.save
 
-    ret[:task] = report
+    report.id
   }
+  end
+
+  # Creates a ReportArtifact based on passed parameters.
+  # @param opts [Hash] of ReportArtifact attributes
+  def report_artifact(opts)
+    artifacts_dir = Report::ARTIFACT_DIR
+    tmp_path = opts[:file_path]
+    artifact_name = File.basename tmp_path
+    new_path = File.join(artifacts_dir, artifact_name)
+
+    unless File.exists? tmp_path
+      raise DBImportError 'Report artifact file to be imported does not exist.'
+    end
+
+    unless (File.directory?(artifacts_dir) && File.writable?(artifacts_dir))
+      raise DBImportError "Could not move report artifact file to #{artifacts_dir}."
+    end
+
+    if File.exists? new_path
+      unique_basename = "#{(Time.now.to_f*1000).to_i}_#{artifact_name}"
+      new_path = File.join(artifacts_dir, unique_basename)
+    end
+
+    FileUtils.copy(tmp_path, new_path)
+    opts[:file_path] = new_path
+    artifact = ReportArtifact.new(opts)
+    unless artifact.valid?
+      errors = artifact.errors.full_messages.join('; ')
+      raise RuntimeError "Artifact to be imported is not valid: #{errors}"
+    end
+    artifact.save
   end
 
   #
@@ -2853,7 +2873,7 @@ class DBManager
         return REXML::Document.new(data)
       rescue REXML::ParseException => e
         dlog("REXML error: Badly formatted XML, attempting to recover. Error was: #{e.inspect}")
-        return REXML::Document.new(data.gsub(/([\x00-\x08\x0b\x0c\x0e-\x1f\x80-\xff])/){ |x| "\\x%.2x" % x.unpack("C*")[0] })
+        return REXML::Document.new(data.gsub(/([\x00-\x08\x0b\x0c\x0e-\x1f\x80-\xff])/n){ |x| "\\x%.2x" % x.unpack("C*")[0] })
       end
     end
   end
@@ -2923,29 +2943,65 @@ class DBManager
     self.send "import_#{ftype}".to_sym, args, &block
   end
 
-  # Returns one of: :nexpose_simplexml :nexpose_rawxml :nmap_xml :openvas_xml
-  # :nessus_xml :nessus_xml_v2 :qualys_scan_xml, :qualys_asset_xml, :msf_xml :nessus_nbe :amap_mlog
-  # :amap_log :ip_list, :msf_zip, :libpcap, :foundstone_xml, :acunetix_xml, :appscan_xml
-  # :burp_session, :ip360_xml_v3, :ip360_aspl_xml, :nikto_xml
+  # Returns one of the following:
+  #
+  # :acunetix_xml
+  # :amap_log
+  # :amap_mlog
+  # :appscan_xml
+  # :burp_session_xml
+  # :ci_xml
+  # :foundstone_xml
+  # :fusionvm_xml
+  # :ip360_aspl_xml
+  # :ip360_xml_v3
+  # :ip_list
+  # :libpcap
+  # :mbsa_xml
+  # :msf_pwdump
+  # :msf_xml
+  # :msf_zip
+  # :nessus_nbe
+  # :nessus_xml
+  # :nessus_xml_v2
+  # :netsparker_xml
+  # :nexpose_rawxml
+  # :nexpose_simplexml
+  # :nikto_xml
+  # :nmap_xml
+  # :openvas_new_xml
+  # :openvas_xml
+  # :outpost24_xml
+  # :qualys_asset_xml
+  # :qualys_scan_xml
+  # :retina_xml
+  # :spiceworks_csv
+  # :wapiti_xml
+  #
   # If there is no match, an error is raised instead.
   def import_filetype_detect(data)
 
     if data and data.kind_of? Zip::ZipFile
-      raise DBImportError.new("The zip file provided is empty.") if data.entries.empty?
+      if data.entries.empty?
+        raise DBImportError.new("The zip file provided is empty.")
+      end
+
       @import_filedata ||= {}
       @import_filedata[:zip_filename] = File.split(data.to_s).last
       @import_filedata[:zip_basename] = @import_filedata[:zip_filename].gsub(/\.zip$/,"")
       @import_filedata[:zip_entry_names] = data.entries.map {|x| x.name}
-      begin
-        @import_filedata[:zip_xml] = @import_filedata[:zip_entry_names].grep(/^(.*)_[0-9]+\.xml$/).first || raise
-        @import_filedata[:zip_wspace] = @import_filedata[:zip_xml].to_s.match(/^(.*)_[0-9]+\.xml$/)[1]
-        @import_filedata[:type] = "Metasploit ZIP Report"
-        return :msf_zip
-      rescue ::Interrupt
-        raise $!
-      rescue ::Exception
-        raise DBImportError.new("The zip file provided is not a Metasploit ZIP report")
+
+      xml_files = @import_filedata[:zip_entry_names].grep(/^(.*)\.xml$/)
+
+      # TODO This check for our zip export should be more extensive
+      if xml_files.empty?
+        raise DBImportError.new("The zip file provided is not a Metasploit Zip Export")
       end
+
+      @import_filedata[:zip_xml] = xml_files.first
+      @import_filedata[:type] = "Metasploit Zip Export"
+
+      return :msf_zip
     end
 
     if data and data.kind_of? PacketFu::PcapFile
@@ -3055,10 +3111,13 @@ class DBManager
           @import_filedata[:type] = "Appscan"
           return :appscan_xml
         when "entities"
-          if  line =~ /creator.*\x43\x4f\x52\x45\x20\x49\x4d\x50\x41\x43\x54/i
+          if  line =~ /creator.*\x43\x4f\x52\x45\x20\x49\x4d\x50\x41\x43\x54/ni
             @import_filedata[:type] = "CI"
             return :ci_xml
           end
+        when "main"
+          @import_filedata[:type] = "Outpost24 XML"
+          return :outpost24_xml
         else
           # Give up if we haven't hit the root tag in the first few lines
           break if line_count > 10
@@ -3086,7 +3145,7 @@ class DBManager
       return :netsparker_xml
     elsif (firstline.index("# Metasploit PWDump Export"))
       # then it's a Metasploit PWDump export
-      @import_filedata[:type] = "msf_pwdump"
+      @import_filedata[:type] = "Metasploit PWDump Export"
       return :msf_pwdump
     end
 
@@ -3167,7 +3226,7 @@ class DBManager
     data = ""
     ::File.open(filename, 'rb') do |f|
       data = f.read(f.stat.size)
-    		end
+    end
     import_wapiti_xml(args.merge(:data => data))
   end
 
@@ -3342,8 +3401,8 @@ class DBManager
   def inspect_single_packet_http(pkt,wspace,task=nil)
     # First, check the server side (data from port 80).
     if pkt.is_tcp? and pkt.tcp_src == 80 and !pkt.payload.nil? and !pkt.payload.empty?
-      if pkt.payload =~ /^HTTP\x2f1\x2e[01]/
-        http_server_match = pkt.payload.match(/\nServer:\s+([^\r\n]+)[\r\n]/)
+      if pkt.payload =~ /^HTTP\x2f1\x2e[01]/n
+        http_server_match = pkt.payload.match(/\nServer:\s+([^\r\n]+)[\r\n]/n)
         if http_server_match.kind_of?(MatchData) and http_server_match[1]
           report_service(
               :workspace => wspace,
@@ -3363,8 +3422,8 @@ class DBManager
 
     # Next, check the client side (data to port 80)
     if pkt.is_tcp? and pkt.tcp_dst == 80 and !pkt.payload.nil? and !pkt.payload.empty?
-      if pkt.payload.match(/[\x00-\x20]HTTP\x2f1\x2e[10]/)
-        auth_match = pkt.payload.match(/\nAuthorization:\s+Basic\s+([A-Za-z0-9=\x2b]+)/)
+      if pkt.payload.match(/[\x00-\x20]HTTP\x2f1\x2e[10]/n)
+        auth_match = pkt.payload.match(/\nAuthorization:\s+Basic\s+([A-Za-z0-9=\x2b]+)/n)
         if auth_match.kind_of?(MatchData) and auth_match[1]
           b64_cred = auth_match[1]
         else
@@ -3476,23 +3535,36 @@ class DBManager
     data.each_line do |line|
       case line
       when /^[\s]*#/ # Comment lines
-        if line[/^#[\s]*([0-9.]+):([0-9]+)(\x2f(tcp|udp))?[\s]*(\x28([^\x29]*)\x29)?/]
+        if line[/^#[\s]*([0-9.]+):([0-9]+)(\x2f(tcp|udp))?[\s]*(\x28([^\x29]*)\x29)?/n]
           addr = $1
           port = $2
           proto = $4
           sname = $6
         end
       when /^[\s]*Warning:/
-        next # Discard warning messages.
-      when /^[\s]*([^\s:]+):[0-9]+:([A-Fa-f0-9]+:[A-Fa-f0-9]+):[^\s]*$/ # SMB Hash
+        # Discard warning messages.
+        next
+
+      # SMB Hash
+      when /^[\s]*([^\s:]+):[0-9]+:([A-Fa-f0-9]+:[A-Fa-f0-9]+):[^\s]*$/
         user = ([nil, "<BLANK>"].include?($1)) ? "" : $1
         pass = ([nil, "<BLANK>"].include?($2)) ? "" : $2
         ptype = "smb_hash"
-      when /^[\s]*([^\s:]+):([0-9]+):NO PASSWORD\*+:NO PASSWORD\*+[^\s]*$/ # SMB Hash
+
+      # SMB Hash
+      when /^[\s]*([^\s:]+):([0-9]+):NO PASSWORD\*+:NO PASSWORD\*+[^\s]*$/
         user = ([nil, "<BLANK>"].include?($1)) ? "" : $1
         pass = ""
         ptype = "smb_hash"
-      when /^[\s]*([\x21-\x7f]+)[\s]+([\x21-\x7f]+)?/ # Must be a user pass
+
+      # SMB Hash with cracked plaintext, or just plain old plaintext
+      when /^[\s]*([^\s:]+):(.+):[A-Fa-f0-9]*:[A-Fa-f0-9]*:::$/
+        user = ([nil, "<BLANK>"].include?($1)) ? "" : $1
+        pass = ([nil, "<BLANK>"].include?($2)) ? "" : $2
+        ptype = "password"
+
+      # Must be a user pass
+      when /^[\s]*([\x21-\x7f]+)[\s]+([\x21-\x7f]+)?/n
         user = ([nil, "<BLANK>"].include?($1)) ? "" : dehex($1)
         pass = ([nil, "<BLANK>"].include?($2)) ? "" : dehex($2)
         ptype = "password"
@@ -3531,7 +3603,7 @@ class DBManager
 
   # If hex notation is present, turn them into a character.
   def dehex(str)
-    hexen = str.scan(/\x5cx[0-9a-fA-F]{2}/)
+    hexen = str.scan(/\x5cx[0-9a-fA-F]{2}/n)
     hexen.each { |h|
       str.gsub!(h,h[2,2].to_i(16).chr)
     }
@@ -3607,16 +3679,13 @@ class DBManager
       end
     }
 
-
     data.entries.each do |e|
       target = ::File.join(@import_filedata[:zip_tmp],e.name)
-      ::File.unlink target if ::File.exists?(target) # Yep. Deleted.
       data.extract(e,target)
       if target =~ /^.*.xml$/
         target_data = ::File.open(target, "rb") {|f| f.read 1024}
         if import_filetype_detect(target_data) == :msf_xml
           @import_filedata[:zip_extracted_xml] = target
-          #break
         end
       end
     end
@@ -3649,7 +3718,7 @@ class DBManager
     data = ::File.open(args[:filename], "rb") {|f| f.read(f.stat.size)}
     wspace = args[:wspace] || args['wspace'] || workspace
     bl = validate_ips(args[:blacklist]) ? args[:blacklist].split : []
-    basedir = args[:basedir] || args['basedir'] || ::File.join(Msf::Config.install_root, "data", "msf")
+    basedir = args[:basedir] || args['basedir'] || ::File.join(Msf::Config.data_directory, "msf")
 
     allow_yaml = false
     btag = nil
@@ -3783,43 +3852,55 @@ class DBManager
 
     # Import Reports
     doc.elements.each("/#{btag}/reports/report") do |report|
-      tmp = args[:ifd][:zip_tmp]
-      report_info              = {}
-      report_info[:workspace]  = args[:wspace]
-      # Should user be imported (original) or declared (the importing user)?
-      report_info[:user]       = nils_for_nulls(report.elements["created-by"].text.to_s.strip)
-      report_info[:options]    = nils_for_nulls(report.elements["options"].text.to_s.strip)
-      report_info[:rtype]      = nils_for_nulls(report.elements["rtype"].text.to_s.strip)
-      report_info[:created_at] = nils_for_nulls(report.elements["created-at"].text.to_s.strip)
-      report_info[:updated_at] = nils_for_nulls(report.elements["updated-at"].text.to_s.strip)
-      report_info[:orig_path]  = nils_for_nulls(report.elements["path"].text.to_s.strip)
-      report_info[:task]       = args[:task]
-      report_info[:orig_path].gsub!(/^\./, tmp) if report_info[:orig_path]
-
-      # Only report a report if we actually have it.
-      # TODO: Copypasta. Seperate this out.
-      if ::File.exists? report_info[:orig_path]
-        reports_dir = ::File.join(basedir,"reports")
-        report_file = ::File.split(report_info[:orig_path]).last
-        if ::File.exists? reports_dir
-          unless (::File.directory?(reports_dir) && ::File.writable?(reports_dir))
-            raise DBImportError.new("Could not move files to #{reports_dir}")
-          end
-        else
-          ::FileUtils.mkdir_p(reports_dir)
-        end
-        new_report = ::File.join(reports_dir,report_file)
-        report_info[:path] = new_report
-        if ::File.exists?(new_report)
-          ::File.unlink new_report
-        else
-          report_report(report_info)
-        end
-        ::FileUtils.copy(report_info[:orig_path], new_report)
-        yield(:msf_report, new_report) if block
-      end
+      import_report(report, args, basedir)
     end
+  end
 
+  # @param report [REXML::Element] to be imported
+  # @param args [Hash]
+  # @param base_dir [String]
+  def import_report(report, args, base_dir)
+    tmp = args[:ifd][:zip_tmp]
+    report_info = {}
+
+    report.elements.each do |e|
+      node_name  = e.name
+      node_value = e.text
+
+      # These need to be converted back to arrays:
+      array_attrs = %w|addresses file-formats options sections|
+      if array_attrs.member? node_name
+        node_value = JSON.parse(node_value)
+      end
+      # Don't restore these values:
+      skip_nodes = %w|id workspace-id artifacts|
+      next if skip_nodes.member? node_name
+
+      report_info[node_name.parameterize.underscore.to_sym] = node_value
+    end
+    # Use current workspace
+    report_info[:workspace_id] = args[:wspace].id
+
+    # Create report, need new ID to record artifacts
+    report_id = report_report(report_info)
+
+    # Handle artifacts
+    report.elements['artifacts'].elements.each do |artifact|
+      artifact_opts = {}
+      artifact.elements.each do |attr|
+        skip_nodes = %w|id accessed-at|
+        next if skip_nodes.member? attr.name
+
+        symboled_attr = attr.name.parameterize.underscore.to_sym
+        artifact_opts[symboled_attr] = attr.text
+      end
+      # Use new Report as parent
+      artifact_opts[:report_id] = report_id
+      # Update to full path
+      artifact_opts[:file_path].gsub!(/^\./, tmp)
+
+      report_artifact(artifact_opts)
+    end
   end
 
   # Convert the string "NULL" to actual nil
@@ -4212,7 +4293,10 @@ class DBManager
     parser = Rex::Parser::RetinaXMLStreamParser.new
     parser.on_found_host = Proc.new do |host|
       hobj = nil
-      data = {:workspace => wspace}
+      data = {
+        :workspace => wspace,
+        :task      => args[:task]
+      }
       addr = host['address']
       next if not addr
 
@@ -5039,7 +5123,7 @@ class DBManager
       next if r[0] != 'results'
       next if r[4] != "12053"
       data = r[6]
-      addr,hname = data.match(/([0-9\x2e]+) resolves as (.+)\x2e\\n/)[1,2]
+      addr,hname = data.match(/([0-9\x2e]+) resolves as (.+)\x2e\\n/n)[1,2]
       addr_map[hname] = addr
     end
 
@@ -5160,7 +5244,7 @@ class DBManager
       # HostName
       host.elements.each('ReportItem') do |item|
         next unless item.elements['pluginID'].text == "12053"
-        addr = item.elements['data'].text.match(/([0-9\x2e]+) resolves as/)[1]
+        addr = item.elements['data'].text.match(/([0-9\x2e]+) resolves as/n)[1]
         hname = host.elements['HostName'].text
       end
       addr ||= host.elements['HostName'].text
@@ -5627,19 +5711,19 @@ class DBManager
 
   # Pull out vulnerabilities that have at least one matching
   # ref -- many "vulns" are not vulns, just audit information.
-  def find_qualys_asset_vulns(host,wspace,hobj,vuln_refs,&block)
+  def find_qualys_asset_vulns(host,wspace,hobj,vuln_refs,task_id,&block)
     host.elements.each("VULN_INFO_LIST/VULN_INFO") do |vi|
       next unless vi.elements["QID"]
       vi.elements.each("QID") do |qid|
         next if vuln_refs[qid.text].nil? || vuln_refs[qid.text].empty?
-        handle_qualys(wspace, hobj, nil, nil, qid.text, nil, vuln_refs[qid.text], nil,nil, args[:task])
+        handle_qualys(wspace, hobj, nil, nil, qid.text, nil, vuln_refs[qid.text], nil, nil, task_id)
       end
     end
   end
 
   # Takes QID numbers and finds the discovered services in
   # a qualys_asset_xml.
-  def find_qualys_asset_ports(i,host,wspace,hobj)
+  def find_qualys_asset_ports(i,host,wspace,hobj,task_id)
     return unless (i == 82023 || i == 82004)
     proto = i == 82023 ? 'tcp' : 'udp'
     qid = host.elements["VULN_INFO_LIST/VULN_INFO/QID[@id='qid_#{i}']"]
@@ -5652,7 +5736,7 @@ class DBManager
         else
           name = match[2].strip
         end
-        handle_qualys(wspace, hobj, match[0].to_s, proto, 0, nil, nil, name, nil, args[:task])
+        handle_qualys(wspace, hobj, match[0].to_s, proto, 0, nil, nil, name, nil, task_id)
       end
     end
   end
@@ -5696,11 +5780,11 @@ class DBManager
       end
 
       # Report open ports.
-      find_qualys_asset_ports(82023,host,wspace,hobj) # TCP
-      find_qualys_asset_ports(82004,host,wspace,hobj) # UDP
+      find_qualys_asset_ports(82023,host,wspace,hobj, args[:task]) # TCP
+      find_qualys_asset_ports(82004,host,wspace,hobj, args[:task]) # UDP
 
       # Report vulns
-      find_qualys_asset_vulns(host,wspace,hobj,vuln_refs,&block)
+      find_qualys_asset_vulns(host,wspace,hobj,vuln_refs, args[:task],&block)
 
     end # host
 
@@ -5855,7 +5939,7 @@ class DBManager
 
     data.each_line do |line|
       next if line =~ /^#/
-      next if line !~ /^Protocol on ([^:]+):([^\x5c\x2f]+)[\x5c\x2f](tcp|udp) matches (.*)$/
+      next if line !~ /^Protocol on ([^:]+):([^\x5c\x2f]+)[\x5c\x2f](tcp|udp) matches (.*)$/n
       addr   = $1
       next if bl.include? addr
       port   = $2.to_i
@@ -5918,6 +6002,36 @@ class DBManager
       doc = Rex::Parser::CIDocument.new(args,framework.db) {|type, data| yield type,data }
     else
       doc = Rex::Parser::CI.new(args,self)
+    end
+    parser = ::Nokogiri::XML::SAX::Parser.new(doc)
+    parser.parse(args[:data])
+  end
+
+  def import_outpost24_xml(args={}, &block)
+    bl = validate_ips(args[:blacklist]) ? args[:blacklist].split : []
+    wspace = args[:wspace] || workspace
+    if Rex::Parser.nokogiri_loaded
+      parser = "Nokogiri v#{::Nokogiri::VERSION}"
+      noko_args = args.dup
+      noko_args[:blacklist] = bl
+      noko_args[:wspace] = wspace
+      if block
+        yield(:parser, parser)
+        import_outpost24_noko_stream(noko_args) {|type, data| yield type,data}
+      else
+        import_outpost24_noko_stream(noko_args)
+      end
+      return true
+    else # Sorry
+      raise DBImportError.new("Could not import due to missing Nokogiri parser. Try 'gem install nokogiri'.")
+    end
+  end
+
+  def import_outpost24_noko_stream(args={},&block)
+    if block
+      doc = Rex::Parser::Outpost24Document.new(args,framework.db) {|type, data| yield type,data }
+    else
+      doc = Rex::Parser::Outpost24Document.new(args,self)
     end
     parser = ::Nokogiri::XML::SAX::Parser.new(doc)
     parser.parse(args[:data])

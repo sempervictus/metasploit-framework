@@ -1,8 +1,6 @@
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# Framework web site for more information on licensing and terms of use.
-#   http://metasploit.com/framework/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
 require 'msf/core'
@@ -12,6 +10,7 @@ class Metasploit3 < Msf::Auxiliary
   include Msf::Auxiliary::Report
   include Msf::Exploit::Remote::HttpClient
   include Msf::Auxiliary::AuthBrute
+  include Msf::Auxiliary::Scanner
 
   def initialize(info={})
     super(update_info(info,
@@ -29,17 +28,12 @@ class Metasploit3 < Msf::Auxiliary
       [
         Opt::RPORT(2381),
         OptPath.new('USERPASS_FILE',  [ false, "File containing users and passwords separated by space, one pair per line",
-          File.join(Msf::Config.install_root, "data", "wordlists", "http_default_userpass.txt") ]),
+          File.join(Msf::Config.data_directory, "wordlists", "http_default_userpass.txt") ]),
         OptPath.new('USER_FILE',  [ false, "File containing users, one per line",
-          File.join(Msf::Config.install_root, "data", "wordlists", "http_default_users.txt") ]),
+          File.join(Msf::Config.data_directory, "wordlists", "http_default_users.txt") ]),
         OptPath.new('PASS_FILE',  [ false, "File containing passwords, one per line",
-          File.join(Msf::Config.install_root, "data", "wordlists", "http_default_pass.txt") ]),
+          File.join(Msf::Config.data_directory, "wordlists", "http_default_pass.txt") ]),
       ], self.class)
-  end
-
-
-  def peer
-    "#{rhost}:#{rport}"
   end
 
   def anonymous_access?
@@ -62,11 +56,11 @@ class Metasploit3 < Msf::Auxiliary
       })
 
       if not res
-        print_error("#{peer} - Connection timed out")
+        vprint_error("#{peer} - Connection timed out")
         return :abort
       end
     rescue ::Rex::ConnectionError, Errno::ECONNREFUSED
-      print_error("#{peer} - Failed to response")
+      vprint_error("#{peer} - Failed to response")
       return :abort
     end
 
@@ -86,7 +80,7 @@ class Metasploit3 < Msf::Auxiliary
   end
 
 
-  def run
+  def run_host(ip)
     if anonymous_access?
       print_status("#{peer} - No login necessary. Server allows anonymous access.")
       return

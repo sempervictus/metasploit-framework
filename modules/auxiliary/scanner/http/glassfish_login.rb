@@ -1,8 +1,6 @@
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# web site for more information on licensing and terms of use.
-#   http://metasploit.com/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
 require 'msf/core'
@@ -169,7 +167,7 @@ class Metasploit3 < Msf::Auxiliary
       print_status("Trying credential GlassFish 2.x #{user}:'#{pass}'....")
       res = try_login(user,pass)
       if res and res.code == 302
-        session = $1 if (res and res.headers['Set-Cookie'] =~ /JSESSIONID=(.*); /i)
+        session = $1 if res && res.get_cookies =~ /JSESSIONID=(.*); /i
         res = send_request('/applications/upload.jsf', 'GET', session)
 
         p = /<title>Deploy Enterprise Applications\/Modules/
@@ -182,7 +180,7 @@ class Metasploit3 < Msf::Auxiliary
       print_status("Trying credential GlassFish 3.x #{user}:'#{pass}'....")
       res = try_login(user,pass)
       if res and res.code == 302
-        session = $1 if (res and res.headers['Set-Cookie'] =~ /JSESSIONID=(.*); /i)
+        session = $1 if res && res.get_cookies =~ /JSESSIONID=(.*); /i
         res = send_request('/common/applications/uploadFrame.jsf', 'GET', session)
 
         p = /<title>Deploy Applications or Modules/

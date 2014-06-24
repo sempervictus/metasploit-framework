@@ -1,8 +1,6 @@
 ##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# web site for more information on licensing and terms of use.
-#   http://metasploit.com/
+# This module requires Metasploit: http//metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
 #
@@ -40,7 +38,7 @@ class Metasploit3 < Msf::Auxiliary
 
     register_advanced_options([
       OptPath.new('CrawlerModulesDir', [true,	'The base directory containing the crawler modules',
-        File.join(Msf::Config.install_root, "data", "msfcrawler")
+        File.join(Msf::Config.data_directory, "msfcrawler")
       ]),
       OptBool.new('EnableUl', [ false, "Enable maximum number of request per URI", true ]),
       OptBool.new('StoreDB', [ false, "Store requests in database", false ]),
@@ -260,11 +258,6 @@ class Metasploit3 < Msf::Auxiliary
         # In case modules or crawler calls to_s on de-chunked responses
         #
         resp.transfer_chunked = false
-        if resp['Set-Cookie']
-          #puts "Set Cookie: #{resp['Set-Cookie']}"
-          #puts "Storing in cookie jar for host:port #{reqopts['rhost']}:#{reqopts['rport']}"
-          #$cookiejar["#{reqopts['rhost']}:#{reqopts['rport']}"] = resp['Set-Cookie']
-        end
 
         if datastore['StoreDB']
           storedb(reqopts,resp,$dbpathmsf)
