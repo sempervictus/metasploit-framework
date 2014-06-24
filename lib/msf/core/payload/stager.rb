@@ -185,7 +185,9 @@ module Msf::Payload::Stager
   # @param (see Handler#create_session)
   # @return (see Handler#create_session)
   def handle_connection_stage(conn, opts={})
-    create_session(conn, opts)
+    # Pass down the datastore as an option so that payload-specific parameters
+    # can be used by session initialization code.
+    create_session(conn, opts.merge({ :datastore => datastore }))
   end
 
   #

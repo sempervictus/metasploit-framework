@@ -106,6 +106,8 @@ class Client
     self.capabilities = opts[:capabilities] || {}
     self.commands     = []
 
+    # Datastore is treated as a plain hash and defaults to an empty one
+    self.datastore    = opts[:datastore] || {}
 
     self.conn_id      = opts[:conn_id]
     self.url          = opts[:url]
@@ -113,12 +115,14 @@ class Client
     self.expiration   = opts[:expiration]
     self.comm_timeout = opts[:comm_timeout]
     self.passive_dispatcher = opts[:passive_dispatcher]
-
     self.response_timeout = opts[:timeout] || self.class.default_timeout
     self.send_keepalives  = true
+    
     # self.encode_unicode   = opts.has_key?(:encode_unicode) ? opts[:encode_unicode] : true
     self.encode_unicode = false
-    self.transport_ssl_version    = (opts[:transport_ssl_version] || :SSLv3).intern
+    
+    # Pull any additional options out of the datastore
+    self.transport_ssl_version = ( self.datastore['TransportSSLVersion'] || :SSLv3 ).intern
 
     if opts[:passive_dispatcher]
       initialize_passive_dispatcher
@@ -478,6 +482,10 @@ class Client
   # A list of the commands
   #
   attr_reader :commands
+  #
+  # Datastore option hash
+  #
+  attr_accessor :datastore
 
 protected
   attr_accessor :parser, :ext_aliases # :nodoc:
