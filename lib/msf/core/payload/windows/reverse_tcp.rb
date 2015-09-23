@@ -94,7 +94,7 @@ module Payload::Windows::ReverseTcp
   #
   # @option opts [Fixnum] :port The port to connect to
   # @option opts [String] :exitfunk The exit method to use if there is an error, one of process, thread, or seh
-  # @option opts [Bool] :reliable Whether or not to enable error handling code
+  # @option opts [Fixnum] :retry_count Number of retry attempts
   #
   def asm_reverse_tcp(opts={})
 
@@ -186,9 +186,14 @@ module Payload::Windows::ReverseTcp
     asm
   end
 
+  #
+  # Generate an assembly stub with the configured feature set and options.
+  #
+  # @option opts [Bool] :reliable Whether or not to enable error handling code
+  #
   def asm_block_recv(opts={})
     reliable     = opts[:reliable]
-    asm << %Q^
+    asm = %Q^
       recv:
         ; Receive the size of the incoming second stage...
         push 0                 ; flags
