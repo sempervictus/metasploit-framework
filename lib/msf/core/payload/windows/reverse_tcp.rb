@@ -150,7 +150,8 @@ module Payload::Windows::ReverseTcp
         test eax,eax           ; non-zero means a failure
         jz connected
 
-      handle_failure:
+      handle_connect_failure:
+        ; decrement our attempt count and try again
         dec dword [esi+8]
         jnz try_connect
     ^
