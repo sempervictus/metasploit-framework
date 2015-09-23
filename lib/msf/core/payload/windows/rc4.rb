@@ -10,7 +10,7 @@ module Msf
 #
 ###
 
-module Payload::Windows::RC4
+module Payload::Windows::Rc4
 
   #
   # Generate assembly code that decrypts RC4 shellcode in-place

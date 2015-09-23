@@ -15,7 +15,7 @@ module Metasploit3
   CachedSize = 394
 
   include Msf::Payload::Stager
-  include Msf::Payload::Windows::ReverseTcp
+  include Msf::Payload::Windows::ReverseTcpRc4
 
   def self.handler_type_alias
     "reverse_tcp_rc4"

