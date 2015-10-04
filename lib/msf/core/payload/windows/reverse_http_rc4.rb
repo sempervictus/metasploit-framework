@@ -113,7 +113,7 @@ module Payload::Windows::ReverseHttpRc4
     after_key:
       pop esi                ; esi := key
     #{asm_decrypt_rc4}
-
+      
     execute_stage:
       ret                    ; dive into the stored stage address
 
@@ -141,7 +141,7 @@ module Payload::Windows::ReverseHttpRc4
     p = c1.update(p)
     p
   end
-
+  
 end
 
 end
