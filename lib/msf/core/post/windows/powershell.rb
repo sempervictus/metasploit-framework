@@ -25,6 +25,7 @@ module Powershell
   # Returns true if powershell is installed
   #
   def have_powershell?
+    return true if load_powershell
     cmd_out = cmd_exec('cmd.exe /c "echo. | powershell get-host"')
     return true if cmd_out =~ /Name.*Version.*InstanceId/m
     return false
@@ -50,6 +51,9 @@ module Powershell
   # is never written to disk.
   #
   def execute_script(script, greedy_kill = false)
+    if load_powershell
+      return [ session.powershell.execute_string(:code => script), [], [] ]
+    end
     @session_pids ||= []
     running_pids = greedy_kill ? get_ps_pids : []
     open_channels = []
@@ -304,6 +308,10 @@ module Powershell
   # to false if this is not desired.
   #
   def psh_exec(script, greedy_kill=true, ps_cleanup=true)
+    if load_powershell and !datastore['Powershell::Post::dry_run']
+      raw_script = decode_script(decompress_script(read_script(script).code))
+      return session.powershell.execute_string(:code => raw_script)
+    end
     # Define vars
     eof = Rex::Text.rand_text_alpha(8)
     # eof = "THIS__SCRIPT_HAS__COMPLETED_EXECUTION#{rand(100)}"
@@ -343,6 +351,21 @@ module Powershell
         clean_up(nil, eof, running_pids, open_channels, env_suffix, false)
       end
       return ps_output
+    end
+  end
+
+
+  def load_powershell
+    return false unless session.type == 'meterpreter'
+    if session.powershell
+      return true
+    else
+      begin
+        return session.core.use("powershell")
+      rescue Errno::ENOENT
+        print_error("Unable to load PowerShell ext.")
+        return false
+      end
     end
   end
 
