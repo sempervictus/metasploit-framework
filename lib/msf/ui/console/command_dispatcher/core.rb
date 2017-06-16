@@ -1140,7 +1140,7 @@ class Core
     cmds     = []
     script   = nil
     reset_ring = false
-    response_timeout = 15
+    response_timeout = 1200 # TODO: this set for DNS, should be 15
     search_term = nil
 
     # any arguments that don't correspond to an option or option arg will

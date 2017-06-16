@@ -42,6 +42,18 @@ module Msf::Payload::TransportConfig
                                                ds['HandlerSSLCert'])
     config
   end
+  
+  def transport_config_reverse_dns(opts={})
+	{
+	  scheme: 'dns',
+      lhost:  datastore['DOMAIN'],
+	  nhost:  datastore['NS_IP'],
+      timeout: 20*60,
+      comm_timeout: 20*60,
+      retry_total:  datastore['SessionRetryTotal'].to_i,
+      retry_wait:   datastore['SessionRetryWait'].to_i  
+    }
+  end
 
   def transport_config_reverse_http(opts={})
     # most cases we'll have a URI already, but in case we don't
