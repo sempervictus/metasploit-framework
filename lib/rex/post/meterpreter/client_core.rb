@@ -810,6 +810,9 @@ private
         when /^http/i
           # Covers HTTP and HTTPS
           c.include(::Msf::Payload::Windows::MigrateHttp_x64)
+        when /^dns/i
+          # Covers reverse DNS
+          c.include(::Msf::Payload::Windows::MigrateDns_x64)
         end
       end
       stub = c.new().generate
