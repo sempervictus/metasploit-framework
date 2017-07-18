@@ -28,8 +28,9 @@ module Payload::Windows::ReverseDns_x64
   def generate(opts={})
     ds = opts[:datastore] || datastore
     conf = {
-      ns_server:        ds['NS_SERVER'],
-      domain:        ds['DOMAIN'],
+      ns_server:   ds['NS_SERVER'],
+      client_id:   '0',
+      domain:      ds['DOMAIN'],
       retry_count: ds['ReverseConnectRetries'],
       reliable:    false
     }

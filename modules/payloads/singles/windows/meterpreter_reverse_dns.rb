@@ -24,7 +24,7 @@ module MetasploitModule
   def initialize(info = {})
 
     super(merge_info(info,
-      'Name'        => 'Windows Meterpreter Shell, Reverse HTTP Inline',
+      'Name'        => 'Windows Meterpreter Shell, Reverse DNS Inline',
       'Description' => 'Connect back to attacker and spawn a Meterpreter shell',
       'Author'      => [ 'Alexey Sintsov' ],
       'License'     => MSF_LICENSE,

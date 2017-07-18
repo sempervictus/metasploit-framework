@@ -34,6 +34,19 @@ module Msf::Payload::TransportConfig
     }.merge(timeout_config(opts))
   end
 
+  def transport_config_reverse_dns(opts={})
+    {
+    scheme: 'dns',
+      lhost:  datastore['DOMAIN'],
+      nhost:  datastore['NS_IP'],
+      client_id:  '0',
+      timeout: 20*60,
+      comm_timeout: 60*60,
+      retry_total:  datastore['SessionRetryTotal'].to_i,
+      retry_wait:   20*60 
+    }
+  end
+  
   def transport_config_reverse_https(opts={})
     ds = opts[:datastore] || datastore
     config = transport_config_reverse_http(opts)
