@@ -11,7 +11,7 @@ class Rex::Payloads::Meterpreter::Config
 
   URL_SIZE = 512
   UA_SIZE = 256
-  NS_NAME_SIZE = 254
+  NS_NAME_SIZE = 128
   PROXY_HOST_SIZE = 128
   PROXY_USER_SIZE = 64
   PROXY_PASS_SIZE = 64
@@ -124,9 +124,12 @@ private
       pack << 'A*A*A*A*A*'
     elsif url.start_with?('dns')
       ns_server = to_str(opts[:nhost] || '', NS_NAME_SIZE) 
+      server_id = to_str(opts[:server_id] || 'pipiska', 256) 
+      client_id = to_str('',2)
       transport_data << ns_server
-      transport_data << "\x00\x30"
-      pack << 'A*v'
+      transport_data << client_id
+      transport_data << server_id
+      pack << 'A*A*A*'
     end
 
     # return the packed transport information

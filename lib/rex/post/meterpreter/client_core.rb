@@ -162,7 +162,9 @@ class ClientCore < Extension
         :proxy_user   => t.get_tlv_value(TLV_TYPE_TRANS_PROXY_USER),
         :proxy_pass   => t.get_tlv_value(TLV_TYPE_TRANS_PROXY_PASS),
         :cert_hash    => t.get_tlv_value(TLV_TYPE_TRANS_CERT_HASH),
-        :nhost        => t.get_tlv_value(TLV_TYPE_TRANS_NSHOST)
+        :nhost        => t.get_tlv_value(TLV_TYPE_TRANS_NSHOST),
+        :client_id    => t.get_tlv_value(TLV_TYPE_TRANS_CLIENT_ID),
+        :server_id    => t.get_tlv_value(TLV_TYPE_TRANS_SERVER_ID)
       }
     }
 

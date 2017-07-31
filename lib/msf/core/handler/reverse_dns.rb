@@ -40,7 +40,8 @@ module ReverseDns
     register_options(
       [
         Opt::LPORT(4444),
-        OptString.new('DOMAIN', [true, 'DNS IP', '']),
+        OptString.new('DOMAIN', [true, 'DOMAIN', '']),
+        OptString.new('SERVER_ID', [true, 'SERVER ID', 'pipiska']),
         OptAddress.new('RHOST', [true, 'HANDLER BIND IP', '']),
         OptAddress.new('NS_IP', [false, 'NS SERVER IP', '']),
       ], Msf::Handler::ReverseDns)

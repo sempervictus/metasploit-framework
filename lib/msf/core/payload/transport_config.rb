@@ -39,6 +39,7 @@ module Msf::Payload::TransportConfig
     scheme: 'dns',
       lhost:  datastore['DOMAIN'],
       nhost:  datastore['NS_IP'],
+      server_id:  datastore['SERVER_ID'],
       client_id:  '0',
       timeout: 20*60,
       comm_timeout: 60*60,
