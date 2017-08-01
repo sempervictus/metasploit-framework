@@ -91,11 +91,13 @@ module ReverseDns
     # Take a copy of the datastore options
     rhost = datastore['RHOST']
     lport = datastore['LPORT']
+    server_id = datastore['SERVER_ID']
 
     # Ignore this if one of the required options is missing
     return if not rhost
     return if not lport
-
+    return if not server_id
+    
     # Only try the same host/port combination once
     phash = rhost + ':' + lport.to_s
     return if self.listener_pairs[phash]
@@ -159,6 +161,7 @@ module ReverseDns
         # to implement the Stream interface.
         conn_threads << framework.threads.spawn("BindTcpHandlerSession", false, client) { |client_copy|
           begin
+            client_copy.put([server_id.length].pack("C") + server_id)
             handle_connection(wrap_aes_socket(client_copy), opts)
           rescue
             elog("Exception raised from BindTcp.handle_connection: #{$!}")
