@@ -103,7 +103,7 @@ class TcpClientChannel < Rex::Post::Meterpreter::Stream
     request.add_tlv(TLV_TYPE_SHUTDOWN_HOW, how)
     request.add_tlv(TLV_TYPE_CHANNEL_ID, self.cid)
 
-    client.send_request(request) if self.cid
+    client.send_request(request)
 
     return true
   end
