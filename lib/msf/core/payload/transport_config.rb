@@ -35,17 +35,13 @@ module Msf::Payload::TransportConfig
   end
 
   def transport_config_reverse_dns(opts={})
+    ds = opts[:datastore] || datastore
     {
-    scheme: 'dns',
-      lhost:  datastore['DOMAIN'],
-      nhost:  datastore['NS_IP'],
-      server_id:  datastore['SERVER_ID'],
-      client_id:  '0',
-      timeout: 20*60,
-      comm_timeout: 60*60,
-      retry_total:  datastore['SessionRetryTotal'].to_i,
-      retry_wait:   20*60 
-    }
+      scheme: 'dns',
+      lhost:  ds['DOMAIN'],
+      nhost:  ds['NS_IP'],
+      server_id:  ds['SERVER_ID']
+    }.merge(timeout_config(opts))
   end
   
   def transport_config_reverse_https(opts={})
@@ -57,18 +53,6 @@ module Msf::Payload::TransportConfig
     config
   end
   
-  def transport_config_reverse_dns(opts={})
-	{
-	  scheme: 'dns',
-      lhost:  datastore['DOMAIN'],
-	  nhost:  datastore['NS_IP'],
-      timeout: 20*60,
-      comm_timeout: 20*60,
-      retry_total:  datastore['SessionRetryTotal'].to_i,
-      retry_wait:   datastore['SessionRetryWait'].to_i  
-    }
-  end
-
   def transport_config_reverse_http(opts={})
     # most cases we'll have a URI already, but in case we don't
     # we should ask for a connect to happen given that this is

@@ -124,7 +124,7 @@ private
       pack << 'A*A*A*A*A*'
     elsif url.start_with?('dns')
       ns_server = to_str(opts[:nhost] || '', NS_NAME_SIZE) 
-      server_id = to_str(opts[:server_id] || 'pipiska', 256) 
+      server_id = to_str(opts[:server_id] || 'toor', 256) 
       client_id = to_str('',2)
       transport_data << ns_server
       transport_data << client_id
