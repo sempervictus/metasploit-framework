@@ -594,13 +594,11 @@ class ClientCore < Extension
       end
       # Rex::Post::FileStat#writable? isn't available
     end
-    puts("migrate_stub ... ")
+ 
     migrate_stub = generate_migrate_stub(target_process)
-    puts("migrate_payload")
     migrate_payload = generate_migrate_payload(target_process)
 
     # Build the migration request
-    puts("req: core_migrate")
     request = Packet.create_request('core_migrate')
 
     if client.platform == 'linux'
@@ -632,9 +630,7 @@ class ClientCore < Extension
 
     if target_process['arch'] == ARCH_X64
       request.add_tlv( TLV_TYPE_MIGRATE_ARCH, 2 ) # PROCESS_ARCH_X64
-
     else
-      puts("7")
       request.add_tlv( TLV_TYPE_MIGRATE_ARCH, 1 ) # PROCESS_ARCH_X86
     end
 
