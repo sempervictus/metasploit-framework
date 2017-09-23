@@ -285,7 +285,7 @@ class Client
   # waiting for a response.
   #
   def Client.default_timeout
-    return 1200
+    return 300
   end
 
   ##

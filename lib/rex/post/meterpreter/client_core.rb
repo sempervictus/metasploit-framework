@@ -642,7 +642,7 @@ class ClientCore < Extension
 
     # Send the migration request. Timeout can be specified by the caller, or set to a min
     # of 60 seconds.
-    timeout = 20*60 #[(opts[:timeout] || 0), 60].max - TODO: uncomment once DNS is stable
+    timeout = [(opts[:timeout] || 0), 60].max
     response = client.send_request(request, timeout)
 
     # Post-migration the session doesn't have encryption any more.

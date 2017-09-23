@@ -32,12 +32,12 @@ module Msf
     end
 	
 	# @return [OptAddress]
-    def self.DOMAIN(default=nil, required=true, desc="The listen address")
-      Msf::OptAddress.new(__method__.to_s, [ required, desc, default ])
+    def self.DOMAIN(default=nil, required=true, desc="Domain name")
+      Msf::OptString.new(__method__.to_s, [ required, desc, default ])
     end
 
 	# @return [OptAddress]
-    def self.NS_IP(default=nil, required=true, desc="The listen address")
+    def self.NS_IP(default=nil, required=true, desc="Name server adddress")
       Msf::OptAddress.new(__method__.to_s, [ required, desc, default ])
     end
 	

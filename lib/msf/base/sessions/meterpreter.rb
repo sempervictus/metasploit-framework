@@ -261,7 +261,7 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     # Keep reading data until no more data is available or the timeout is
     # reached.
     while (::Time.now.to_f < etime)
-      res = shell_readshell_read(-1, timeout)
+      res = shell_read(-1, timeout)
       break unless res
       timeout = etime - ::Time.now.to_f
       buff << res
