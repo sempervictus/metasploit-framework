@@ -405,7 +405,9 @@ module Payload::Windows::ReverseDns
          
       got_everything:
       ;;;;;;;;;;;;;;;;;;;;;;;;;
-         jmp             [esp + 0x24]
+         mov             eax, [esp + 0x24]
+         add             eax, 4
+         jmp             eax
       ;;;;;;;;;;;;;;;;;;;;;;;;;
 
     ^
