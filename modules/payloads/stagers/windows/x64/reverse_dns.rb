@@ -8,7 +8,7 @@ require 'msf/core/payload/windows/x64/reverse_dns'
 
 module MetasploitModule
 
-  CachedSize = 339
+  CachedSize = 684
 
   include Msf::Payload::Stager
   include Msf::Payload::Windows
@@ -18,7 +18,7 @@ module MetasploitModule
     super(merge_info(info,
       'Name'        => 'Windows Reverse DNS Stager',
       'Description' => 'Tunnel communication over reverse DNS',
-      'Author'      => 'hdm',
+      'Author'      => 'Alexey Sintsov',
       'License'     => MSF_LICENSE,
       'Platform'    => 'win',
       'Arch'        => ARCH_X64,

