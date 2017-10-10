@@ -29,7 +29,7 @@ module Payload::Windows::ReflectiveDllInject
       ],
       'Platform'      => 'win',
       'Arch'          => ARCH_X86,
-      'PayloadCompat' => { 'Convention' => 'sockedi dns -https', },
+      'PayloadCompat' => { 'Convention' => 'sockedi -https', },
       'Stage'         => { 'Payload'   => "" }
       ))
 

