@@ -80,8 +80,8 @@ module ReverseDns
   # Starts monitoring for an outbound connection to become established.
   #
   def start_handler
-
     # Maximum number of seconds to run the handler
+    #queue = ::Queue.new
     ctimeout = 5
 
     if (exploit_config and exploit_config['active_timeout'])
@@ -104,10 +104,10 @@ module ReverseDns
     self.listener_pairs[phash] = true
 
     # Start a new handling thread
-    self.listener_threads << framework.threads.spawn("BindTcpHandlerListener-#{lport}", false) {
+    self.listener_threads << framework.threads.spawn("BindTcpHandlerListener-#{lport}", false) { 
       client = nil
 
-      print_status("Started bind handler")
+      print_status("Started bind-DNS handler")
 
       if (rhost == nil)
         raise ArgumentError,
@@ -115,60 +115,91 @@ module ReverseDns
           caller
       end
 
-      stime = Time.now.to_i
+      current_name = "NONE"
+      loop do
+        begin          
+          session = nil
+          #If last connection has a valid session or died        
+          if (framework.sessions.length > 0)
+          
+            framework.sessions.each_sorted do |k|
+              session = framework.sessions[k]
+            end
 
-      while (stime + ctimeout > Time.now.to_i)
-        begin
-          client = Rex::Socket::Tcp.create(
-            'PeerHost' => rhost,
-            'PeerPort' => lport.to_i,
-            'Proxies'  => datastore['Proxies'],
-            'Context'  =>
-              {
-                'Msf'        => framework,
-                'MsfPayload' => self,
-                'MsfExploit' => assoc_exploit
-              })
-        rescue Rex::ConnectionRefused
-          # Connection refused is a-okay
-        rescue ::Exception
-          wlog("Exception caught in bind handler: #{$!.class} #{$!}")
-        end
-
-        break if client
-
-        # Wait a second before trying again
-        Rex::ThreadSafe.sleep(0.5)
-      end
-
-      # Valid client connection?
-      if (client)
-        # Increment the has connection counter
-        self.pending_connections += 1
-
-        # Timeout and datastore options need to be passed through to the client
-        opts = {
-          :datastore    => datastore,
-          :expiration   => datastore['SessionExpirationTimeout'].to_i,
-          :comm_timeout => datastore['SessionCommunicationTimeout'].to_i,
-          :retry_total  => datastore['SessionRetryTotal'].to_i,
-          :retry_wait   => datastore['SessionRetryWait'].to_i,
-          :timeout      => 60*20
-        }
-
-        # Start a new thread and pass the client connection
-        # as the input and output pipe.  Client's are expected
-        # to implement the Stream interface.
-        conn_threads << framework.threads.spawn("BindTcpHandlerSession", false, client) { |client_copy|
-          begin
-            client_copy.put([server_id.length].pack("C") + server_id)
-            handle_connection(wrap_aes_socket(client_copy), opts)
-          rescue
-            elog("Exception raised from BindTcp.handle_connection: #{$!}")
+            
+            current_name = session.machine_id.to_s
+          else
+            current_name = "NONE"
           end
-        }
-      else
-        wlog("No connection received before the handler completed")
+          
+          stime = Time.now.to_i
+          
+          if (current_name != "" or framework.sessions.length == 0)       
+            
+            while (stime + ctimeout > Time.now.to_i)
+              begin
+                client = Rex::Socket::Tcp.create(
+                  'PeerHost' => rhost,
+                  'PeerPort' => lport.to_i,
+                  'Proxies'  => datastore['Proxies'],
+                  'Context'  =>
+                    {
+                      'Msf'        => framework,
+                      'MsfPayload' => self,
+                      'MsfExploit' => assoc_exploit
+                })
+              rescue Rex::ConnectionRefused
+                # Connection refused is a-okay
+              rescue ::Exception
+                wlog("Exception caught in bind handler: #{$!.class} #{$!}")
+              end
+
+              break if client
+
+              # Wait a second before trying again
+              Rex::ThreadSafe.sleep(0.5)
+            end
+
+            # Valid client connection?
+            if (client)
+              
+              #lqueue.push(client)
+              
+              # Increment the has connection counter
+              self.pending_connections += 1
+              
+              # Timeout and datastore options need to be passed through to the client
+              opts = {
+                :datastore    => datastore,
+                :expiration   => datastore['SessionExpirationTimeout'].to_i,
+                :comm_timeout => datastore['SessionCommunicationTimeout'].to_i,
+                :retry_total  => datastore['SessionRetryTotal'].to_i,
+                :retry_wait   => datastore['SessionRetryWait'].to_i,
+                :timeout      => 60*20
+              }
+              
+              
+              # Start a new thread and pass the client connection
+              # as the input and output pipe.  Client's are expected
+              # to implement the Stream interface.
+              conn_threads << framework.threads.spawn("BindTcpHandlerSession", false, client) { |client_copy|
+                begin
+                  
+                  client_copy.put([server_id.length].pack("C") + server_id)
+                  handle_connection(wrap_aes_socket(client_copy), opts)
+                rescue
+                  elog("Exception raised from BindTcp.handle_connection: #{$!}")
+                end
+              }
+              Rex::ThreadSafe.sleep(5)
+            else
+              wlog("No connection received before the handler completed")
+            end
+          else
+              
+              Rex::ThreadSafe.sleep(5)
+          end
+        end
       end
     }
   end
