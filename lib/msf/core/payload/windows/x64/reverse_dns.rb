@@ -425,6 +425,9 @@ module Payload::Windows::ReverseDns_x64
     asm
   end
 
+  def stage_over_connection?
+    false
+  end
 
 end
 

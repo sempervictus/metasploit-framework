@@ -435,6 +435,13 @@ module Payload::Windows::ReverseDns
     ^
     asm
   end
+  
+  #
+  # Do not transmit the stage over the connection.  We handle this via DNS
+  #
+  def stage_over_connection?
+    false
+  end
 
 
 end

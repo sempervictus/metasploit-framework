@@ -49,7 +49,7 @@ class ClientCore < Extension
 
   VALID_TRANSPORTS = {
     'reverse_tcp'   => METERPRETER_TRANSPORT_SSL,
-	'reverse_dns'  => METERPRETER_TRANSPORT_DNS,
+	'reverse_dns'   => METERPRETER_TRANSPORT_DNS,
     'reverse_http'  => METERPRETER_TRANSPORT_HTTP,
     'reverse_https' => METERPRETER_TRANSPORT_HTTPS,
     'bind_tcp'      => METERPRETER_TRANSPORT_SSL
