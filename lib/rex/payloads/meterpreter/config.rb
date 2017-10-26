@@ -80,7 +80,21 @@ private
     end
 
     if lhost && opts[:scheme].start_with?('dns')
-      url = "#{opts[:scheme]}://#{lhost}"
+      ns_server = opts[:nhost] 
+      server_id = opts[:server_id] 
+      client_id = '0'
+      
+      case opts[:req_type]
+      when 'IPv6'
+        req_type = 28
+      when 'DNSKEY'
+        req_type = 48
+      else
+        req_type = 28
+      end
+      
+      url = "#{opts[:scheme]}://#{lhost.to_s}?ns=#{ns_server.to_s}&sid=#{server_id.to_s}&req=#{req_type.to_s}&cli=#{client_id.to_s}&"
+      
     else
       url = "#{opts[:scheme]}://#{lhost}"
       url << ":#{opts[:lport]}" if opts[:lport]
@@ -88,7 +102,7 @@ private
       url << "?#{opts[:scope_id]}" if opts[:scope_id]
     end
 
-    # if the transport URI is for a HTTP payload we need to add a stack
+    # if the transport URI is for a HTTP or DNS payload we need to add a stack
     # of other stuff
     pack = 'A*VVV'
     transport_data = [
@@ -122,14 +136,6 @@ private
 
       # update the packing spec
       pack << 'A*A*A*A*A*'
-    elsif url.start_with?('dns')
-      ns_server = to_str(opts[:nhost] || '', NS_NAME_SIZE) 
-      server_id = to_str(opts[:server_id] || 'toor', 256) 
-      client_id = to_str('',2)
-      transport_data << ns_server
-      transport_data << client_id
-      transport_data << server_id
-      pack << 'A*A*A*'
     end
 
     # return the packed transport information

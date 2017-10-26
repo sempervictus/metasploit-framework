@@ -42,8 +42,10 @@ module ReverseDns
         Opt::LPORT(4444),
         OptString.new('DOMAIN', [true, 'DOMAIN', '']),
         OptString.new('SERVER_ID', [true, 'SERVER ID', 'toor']),
-        OptAddress.new('RHOST', [true, 'HANDLER BIND IP', '']),
+        OptEnum.new('REQ_TYPE', [ true, 'Type of DNS tunnel', 'IPv6', ['IPv6', 'DNSKEY']]),
+        OptAddress.new('RHOST', [true, 'DNX PROXY IP', '']),
         OptAddress.new('NS_IP', [false, 'NS SERVER IP', '']),
+        
       ], Msf::Handler::ReverseDns)
 
     self.conn_threads = []
@@ -91,11 +93,13 @@ module ReverseDns
     rhost = datastore['RHOST']
     lport = datastore['LPORT']
     server_id = datastore['SERVER_ID']
+    req_type = datastore['REQ_TYPE']
 
     # Ignore this if one of the required options is missing
     return if not rhost
     return if not lport
     return if not server_id
+    return if not req_type
     
     # Only try the same host/port combination once
     phash = rhost + ':' + lport.to_s

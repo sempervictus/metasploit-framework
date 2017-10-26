@@ -30,6 +30,7 @@ module Payload::Windows::ReverseDns_x64
       domain:      ds['DOMAIN'],
       server_id:   ds['SERVER_ID'],
       retry_count: ds['ReverseConnectRetries'],
+      req_type:    ds['REQ_TYPE'] || "IPv6",
       reliable:    false
     }
 
