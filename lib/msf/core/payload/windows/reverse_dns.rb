@@ -26,7 +26,7 @@ module Payload::Windows::ReverseDns
   def generate(opts={})
     ds = opts[:datastore] || datastore
     conf = {
-      ns_server:   ds['NS_SERVER'],
+      ns_server:   ds['NS_IP'],
       domain:      ds['DOMAIN'],
       server_id:   ds['SERVER_ID'],
       req_type:    ds['REQ_TYPE'] || "DNSKEY",

