@@ -90,7 +90,7 @@ private
       when 'DNSKEY'
         req_type = 48
       else
-        req_type = 28
+        req_type = 48
       end
       
       url = "#{opts[:scheme]}://#{lhost.to_s}?ns=#{ns_server.to_s}&sid=#{server_id.to_s}&req=#{req_type.to_s}&cli=#{client_id.to_s}&"

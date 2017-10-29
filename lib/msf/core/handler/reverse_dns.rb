@@ -42,7 +42,7 @@ module ReverseDns
         Opt::LPORT(4444),
         OptString.new('DOMAIN', [true, 'DOMAIN', '']),
         OptString.new('SERVER_ID', [true, 'SERVER ID', 'toor']),
-        OptEnum.new('REQ_TYPE', [ true, 'Type of DNS tunnel', 'IPv6', ['IPv6', 'DNSKEY']]),
+        OptEnum.new('REQ_TYPE', [ true, 'Type of DNS tunnel', 'DNSKEY', ['IPv6', 'DNSKEY']]),
         OptAddress.new('RHOST', [true, 'DNX PROXY IP', '']),
         OptAddress.new('NS_IP', [false, 'NS SERVER IP', '']),
         

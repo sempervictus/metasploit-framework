@@ -38,7 +38,7 @@ module Msf
     
     # @return [OptEnum]
     def self.REQ_TYPE(default=nil, required=true, desc="Domain name")
-      Msf::OptEnum.new(__method__.to_s, [ required, desc, 'IPv6', ['IPv6', 'DNSKEY']])
+      Msf::OptEnum.new(__method__.to_s, [ required, desc, 'DNSKEY', ['IPv6', 'DNSKEY']])
     end
     # @return [OptAddress]
     def self.NS_IP(default=nil, required=true, desc="Name server adddress")
