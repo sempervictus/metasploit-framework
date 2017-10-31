@@ -450,11 +450,11 @@ module Payload::Windows::ReverseHttp
   end
 
   #
-  # Do not transmit the stage over the connection.  We handle this via HTTPS
+  # Do not transmit the stage over the connection.  We handle this via DNS
   #
-  def stage_over_connection?
-    false
-  end
+  #def stage_over_connection?
+  #  false
+  #end
 
   #
   # Always wait at least 20 seconds for this payload (due to staging delays)

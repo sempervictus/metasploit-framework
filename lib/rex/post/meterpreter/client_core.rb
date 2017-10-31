@@ -49,7 +49,7 @@ class ClientCore < Extension
 
   VALID_TRANSPORTS = {
     'reverse_tcp'   => METERPRETER_TRANSPORT_SSL,
-	'reverse_dns'  => METERPRETER_TRANSPORT_DNS,
+	'reverse_dns'   => METERPRETER_TRANSPORT_DNS,
     'reverse_http'  => METERPRETER_TRANSPORT_HTTP,
     'reverse_https' => METERPRETER_TRANSPORT_HTTPS,
     'bind_tcp'      => METERPRETER_TRANSPORT_SSL
@@ -160,11 +160,7 @@ class ClientCore < Extension
         :ua           => t.get_tlv_value(TLV_TYPE_TRANS_UA),
         :proxy_host   => t.get_tlv_value(TLV_TYPE_TRANS_PROXY_HOST),
         :proxy_user   => t.get_tlv_value(TLV_TYPE_TRANS_PROXY_USER),
-        :proxy_pass   => t.get_tlv_value(TLV_TYPE_TRANS_PROXY_PASS),
-        :cert_hash    => t.get_tlv_value(TLV_TYPE_TRANS_CERT_HASH),
-        :nhost        => t.get_tlv_value(TLV_TYPE_TRANS_NSHOST),
-        :client_id    => t.get_tlv_value(TLV_TYPE_TRANS_CLIENT_ID),
-        :server_id    => t.get_tlv_value(TLV_TYPE_TRANS_SERVER_ID)
+        :proxy_pass   => t.get_tlv_value(TLV_TYPE_TRANS_PROXY_PASS)
       }
     }
 
@@ -594,13 +590,11 @@ class ClientCore < Extension
       end
       # Rex::Post::FileStat#writable? isn't available
     end
-    puts("migrate_stub ... ")
+ 
     migrate_stub = generate_migrate_stub(target_process)
-    puts("migrate_payload")
     migrate_payload = generate_migrate_payload(target_process)
 
     # Build the migration request
-    puts("req: core_migrate")
     request = Packet.create_request('core_migrate')
 
     if client.platform == 'linux'
@@ -632,9 +626,7 @@ class ClientCore < Extension
 
     if target_process['arch'] == ARCH_X64
       request.add_tlv( TLV_TYPE_MIGRATE_ARCH, 2 ) # PROCESS_ARCH_X64
-
     else
-      puts("7")
       request.add_tlv( TLV_TYPE_MIGRATE_ARCH, 1 ) # PROCESS_ARCH_X86
     end
 
@@ -646,7 +638,7 @@ class ClientCore < Extension
 
     # Send the migration request. Timeout can be specified by the caller, or set to a min
     # of 60 seconds.
-    timeout = 20*60 #[(opts[:timeout] || 0), 60].max - TODO: uncomment once DNS is stable
+    timeout = [(opts[:timeout] || 0), 60].max
     response = client.send_request(request, timeout)
 
     # Post-migration the session doesn't have encryption any more.
