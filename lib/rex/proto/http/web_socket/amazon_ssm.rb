@@ -58,6 +58,7 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
       self.unpack(Rex::Text.rand_text(16))
     end
   end
+
   module Interface
     module SsmChannelMethods
       attr_accessor :rows
@@ -109,24 +110,25 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
       end
 
       def handle_output_data(output_frame)
-        if @ack_message == output_frame.uuid
-          # wlog("SsmChannel: repeat output #{output_frame.uuid}")
-        else
-          @ack_message = acknowledge_output(output_frame)
-          # TODO: handle Payload::* types
-          if [PayloadType::Output, PayloadType::Error].any? { |e| e == output_frame.payload_type }
-            if @filter_echo.is_a?(String) and output_frame.payload_data.strip == @filter_echo.strip
-              dlog("SsmChannel: filtering output #{@filter_echo}")
-              @filter_echo = true
-              return nil
-            else
-              return @filter_text ? strip_shell_fmt(output_frame.payload_data) : output_frame.payload_data
-            end
-          else
-            wlog("SsmChannel got unhandled output payload type: #{Payload.from_val(output_frame.payload_type)}")
-          end
+        return nil if @ack_message == output_frame.uuid
+
+        @ack_message = acknowledge_output(output_frame)
+        # TODO: handle Payload::* types
+        if ![PayloadType::Output, PayloadType::Error].any? { |e| e == output_frame.payload_type }
+          wlog("SsmChannel got unhandled output payload type: #{Payload.from_val(output_frame.payload_type)}")
+          return nil
         end
-        nil
+
+        payload_data = output_frame.payload_data.value
+
+
+        if @filter_echo.is_a?(String) and payload_data.strip == @filter_echo.strip
+          dlog("SsmChannel: filtering output #{@filter_echo}")
+          @filter_echo = true
+          return nil
+        end
+
+        @filter_text ? strip_shell_fmt(payload_data) : payload_data
       end
 
       def handle_acknowledge(ack_frame)
@@ -207,6 +209,7 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
             msg: "Unknown AWS SSM message type: #{ssm_frame.header.message_type}"
           )
         end
+
         nil
       end
 
@@ -240,15 +243,16 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
       string :message_id, length: 16, initial_value: UUID.pack(UUID.rand)
     end
 
-    string :payload_digest, length: 32, default_value: lambda { Digest::SHA256.digest(payload_data) }
+    string :payload_digest, length: 32, default_value: -> { Digest::SHA256.digest(payload_data) }
     uint32 :payload_type, default_value: PayloadType::Output
-    uint32 :payload_length, value: lambda { payload_data.length }
+    uint32 :payload_length, value: -> { payload_data.length }
     string :payload_data, read_length: -> { payload_length }
 
     class << self
       def create(data = nil, mtype = 'input_stream_data')
         return data if data.is_a?(SsmFrame)
-        frame = SsmFrame.new( header: {
+
+        frame = SsmFrame.new(header: {
           message_type: mtype,
           created_date: (Time.now.to_f * 1000).to_i,
           message_id: UUID.pack(UUID.rand)

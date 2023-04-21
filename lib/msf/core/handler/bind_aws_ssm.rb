@@ -233,7 +233,7 @@ module BindAwsSsm
         rescue Rex::ConnectionError => e
           vprint_error(e.message)
         rescue
-          wlog("Exception caught in SSM handler: #{$!.class} #{$!}")
+          wlog("Exception caught in AWS SSM handler: #{$!.class} #{$!}")
           break
         end
         break if ssm_client
@@ -260,11 +260,13 @@ module BindAwsSsm
           begin
             raise Rex::Proto::Http::WebSocket::ConnectionError if datastore['SSM_FORCE_COMMANDS']
 
-            # Call API to start SSM session
-            session_init = client_copy.start_session({
+            session_params = {
               target: datastore['EC2_ID'],
               document_name: datastore['SSM_SESSION_DOC']
-            })
+            }
+
+            # Call API to start SSM session
+            session_init = client_copy.start_session(session_params)
             # Create WebSocket from parameters
             ssm_sock = connect_ssm_ws(session_init)
             # Create Channel from WebSocket
@@ -281,8 +283,11 @@ module BindAwsSsm
             info_copy['CommandDocument'] = datastore['SSM_COMMAND_DOC']
             chan = AwsSsmSessionChannel.new(framework, client_copy, info_copy)
           rescue => e
-            elog('Exception raised from BindAwsSsm.handle_connection', error: e)
+            print_error("AWS SSM handler failed: #{e.message}")
+            elog('Exception raised from BindAwsSsm', error: e)
+            return
           end
+
           self.listener_pairs[datastore['EC2_ID']] = chan
 
           handle_connection(chan.lsock, { datastore: datastore, aws_ssm_host_info: peer_info })
