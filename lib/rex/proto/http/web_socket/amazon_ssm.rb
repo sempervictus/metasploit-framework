@@ -88,7 +88,6 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
         output_frame.uuid
       end
 
-
       def pause_publication
         msg = SsmFrame.create_pause_pub
         @publication = false
@@ -157,7 +156,7 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
         data = JSON.generate({cols: cols, rows: rows})
         frame = SsmFrame.create(data)
         frame.payload_type = PayloadType::Size
-        write(frame)
+        @websocket.put_wsbinary(frame.to_binary_s)
       end
     end
 
@@ -173,7 +172,7 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
         @ack_message = nil
         @filter_echo = filter_echo
         @filter_text = filter_text
-        @publication = true
+        @publication = false
 
         super(websocket, write_type: :binary)
       end
@@ -184,6 +183,7 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
         ssm_frame = SsmFrame.read(data)
         case ssm_frame.header.message_type.strip
         when 'output_stream_data'
+          @publication = true # Linux sends stream data before sending start_publication message
           return handle_output_data(ssm_frame)
         when 'acknowledge'
           # update ACK seqno
@@ -220,6 +220,10 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
         frame.header.sequence_number = @out_seq_num
         @out_seq_num += 1
         frame.to_binary_s
+      end
+
+      def publishing?
+        @publication
       end
     end
 

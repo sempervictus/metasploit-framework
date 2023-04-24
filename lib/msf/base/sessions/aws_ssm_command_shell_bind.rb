@@ -37,14 +37,22 @@ module Msf::Sessions
         case ssm_peer_info['PlatformType']
         when 'Linux'
           @platform = 'linux'
+          @session_type = 'shell'
         when 'MacOS'
           @platform = 'osx'
+          @session_type = 'shell'
         when 'Windows'
-          @platform = 'win'
+          @platform = 'windows'
+          @session_type = 'powershell'
+          extend(Msf::Sessions::PowerShell::Mixin)
         end
 
         @info = "AWS SSM #{ssm_peer_info['ResourceType']} (#{ssm_peer_info['InstanceId']})"
       end
+    end
+
+    def type
+      @session_type.dup
     end
 
     def bootstrap(*args)
