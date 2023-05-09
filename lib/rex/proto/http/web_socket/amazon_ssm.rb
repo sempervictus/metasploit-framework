@@ -145,7 +145,7 @@ module Rex::Proto::Http::WebSocket::AmazonSsm
 
         rows, cols = ::IO.console.winsize
         unless rows == self.rows && cols == self.cols
-          set_term_size(rows, cols)
+          set_term_size(cols, rows)
           self.rows = rows
           self.cols = cols
         end
